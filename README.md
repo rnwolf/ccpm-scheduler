@@ -80,4 +80,5 @@ behavior changes.
 
 ## License
 
-TBD.
+Dual-licensed under either of [MIT](LICENSE-MIT) or
+[Apache License 2.0](LICENSE-APACHE), at your option.
