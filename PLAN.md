@@ -98,9 +98,16 @@ self-serve the contracts). Design rules implemented:
 
 ## Phase 3 — Repoint the Claude skill
 
-SKILL.md workflow switches from `uv run scripts/…` to the `ccpm-scheduler` CLI;
-bundled scripts become thin shims or are removed. Rerun the eval suite to
-confirm no agent-behavior regression.
+**Done (2026-07-12, skill repo commit 04f91e6)**: SKILL.md, algorithm.md, and
+the skill README instruct the `ccpm-scheduler` CLI (via
+`uvx --from git+https://github.com/rnwolf/ccpm-scheduler`); the bundled
+scripts and their lock files are removed — this package is the single source
+of truth. Verified end-to-end with the GitHub-installed CLI on the worked
+example + all four eval inputs: validate, build (byte-identical to goldens),
+check, plot. (A full agent-behavior eval rerun via the skill-creator harness
+remains optional follow-up; the mechanical toolchain path is proven.)
+Release tagged v0.3.0. Once published on PyPI, simplify the skill's
+invocation to plain `uvx ccpm-scheduler`.
 
 ## Phase 4 — our-planner integration
 
