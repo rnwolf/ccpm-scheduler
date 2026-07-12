@@ -1,0 +1,11 @@
+id,name,realistic_duration,predecessor_ids,resource_ids
+R1,Strip down machine,8,,mech
+R2,Order parts,4,,plan
+R3,Refurbish spindle,12,R1,mech
+R4,Paint frame,6,R1,paint
+R5,Upgrade wiring,10,R1,elec
+R6,Install spindle,6,R3;R2,mech
+R7,Install panels,4,R4,mech
+R8,Wire cabinet,8,R5;R2,elec
+R9,Commission,6,R6;R7;R8,elec;mech
+R10,Document and handover,4,R9,plan

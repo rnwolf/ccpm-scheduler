@@ -1,0 +1,10 @@
+id,name,realistic_duration,predecessor_ids,resource_ids,url
+W1,Content outline,6,,writer,https://example.com/tickets/W1
+W2,Draft copy,10,W1,writer,https://example.com/tickets/W2
+W3,Design mockups,8,W1,designer,https://example.com/tickets/W3
+W4,Build frontend,12,W3,dev,https://example.com/tickets/W4
+W5,Build backend,16,,dev,https://example.com/tickets/W5
+W6,Integrate,8,W4;W5,dev,https://example.com/tickets/W6
+W7,Edit copy,6,W2,editor,https://example.com/tickets/W7
+W8,Load content,4,W6;W7,writer,https://example.com/tickets/W8
+W9,Launch QA,6,W8,qa,https://example.com/tickets/W9

@@ -1,0 +1,7 @@
+id,name,realistic_duration,predecessor_ids,resource_ids
+K1,Demolition,8,,builder
+K2,Electrics,6,K1,electrician
+K3,Plumbing,6,K1,plumber
+K4,Cabinets,10,K2;K3,builder
+K5,Worktops and finishing,6,K4,builder
+K6,Tiling,8,K3,builder

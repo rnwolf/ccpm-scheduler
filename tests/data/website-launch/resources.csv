@@ -1,0 +1,6 @@
+id,name,capacity,url
+writer,Content writer,1,https://example.com/teams/writer
+designer,UI designer,1,https://example.com/teams/designer
+dev,Developer,1,https://example.com/teams/dev
+editor,Copy editor,1,https://example.com/teams/editor
+qa,QA engineer,1,https://example.com/teams/qa

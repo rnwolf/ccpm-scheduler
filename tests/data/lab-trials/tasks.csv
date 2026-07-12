@@ -1,0 +1,9 @@
+id,name,optimal_duration,predecessor_ids,resource_ids
+P1,Procure rig,6,,eng
+P2,Write protocol,4,,sci
+P3,Install rig,5,P1,eng
+P4,Calibrate,4,P3,sci
+P5,Run trial A,6,P2;P4,sci
+P6,Run trial B,5,P2;P4,eng
+P7,Report A,3,P5,sci
+P8,Report B,3,P6,eng
