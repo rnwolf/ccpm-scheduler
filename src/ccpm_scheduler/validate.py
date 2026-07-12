@@ -1,120 +1,144 @@
-"""Validate CCPM input files BEFORE attempting to schedule.
+"""Validate a CCPM project network BEFORE attempting to schedule.
 
-Usage: uv run validate_inputs.py tasks.csv resources.csv [calendar.csv]
+Library API:  validate_network(network) -> ValidationReport
+CLI:          python -m ccpm_scheduler.validate tasks.csv resources.csv [calendar.csv]
 
 The project network must be logically valid. Errors (exit 1):
-  - duplicate task or resource ids
-  - unknown predecessor ids, malformed link tokens
-  - circular dependencies (the cycle is reported)
-  - non-positive task durations (every task must take at least 1 day)
-  - tasks with no resources assigned — a task without a resource cannot
-    contend for capacity, so it cannot participate properly in critical
-    chain identification or leveling
-  - non-positive resource capacity
-  - calendar problems: unknown resource ids, from >= to, overlapping
-    ranges for the same resource, negative capacity
+  - duplicate task or resource ids                        E_DUP_TASK / E_DUP_RESOURCE
+  - unknown predecessor ids, malformed link tokens        E_UNKNOWN_PRED / E_MALFORMED_LINK
+  - circular dependencies (the cycle is reported)         E_CYCLE
+  - non-positive or non-numeric task durations            E_BAD_DURATION
+  - fractional durations/capacities/allocations           E_FRACTIONAL_DURATION /
+    (v1 schedules whole days and whole resources)         E_FRACTIONAL_CAPACITY /
+                                                          E_FRACTIONAL_ALLOCATION
+  - tasks with no resources assigned — a task without     E_NO_RESOURCE
+    a resource cannot contend for capacity, so it cannot
+    participate properly in critical chain identification
+  - unknown resource ids on tasks                         E_UNKNOWN_RESOURCE
+  - non-positive resource capacity                        E_BAD_CAPACITY
+  - calendar problems: unknown resource ids, from >= to,  E_CAL_*
+    overlapping ranges for the same resource, negative
+    capacity, non-numeric rows
 
 Warnings (reported, exit still 0):
-  - resource capacity > 1 (supported, but unusual in CCPM)
-  - non-FS dependency links (supported; buffer sizing on chains with
-    SS/FF overlaps uses elapsed span, see references/algorithm.md)
-  - legacy column names (predecessors/resources) — rename to
-    predecessor_ids/resource_ids
+  - resource capacity > 1 (unusual in CCPM)               W_CAPACITY_GT1
+  - non-FS dependency links (supported; buffer sizing on  W_NON_FS_LINK
+    chains with SS/FF overlaps uses elapsed span)
+  - legacy column names (predecessors/resources)          W_LEGACY_COLUMNS
 
-Structure report (informational): the start tasks (no predecessors) and
-terminal tasks (no successors). Multiple entry or exit points are fine:
-the scheduler anchors them to a single synthetic Start milestone and a
-single synthetic Finish milestone (zero duration, no resources, removed
-from outputs), so the network always flows one source to one sink.
-
-Column names: `predecessor_ids` and `resource_ids` (legacy
-`predecessors`/`resources` accepted with a warning).
+The report also lists the network's entry/exit points (start_tasks /
+terminal_tasks). Multiple entry or exit points are fine: the scheduler
+anchors them to synthetic Start/Finish milestones.
 
 Exit code 0 = inputs valid (warnings allowed), 1 = errors found.
 """
-import csv
-import re
+from __future__ import annotations
+
 import sys
 from collections import defaultdict
 
-LINK_RE = re.compile(r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF))?(?P<lag>[+-]\d+)?$", re.I)
+from . import io
+from .model import Network, ValidationReport
 
 
-def read_csv(path):
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f)), csv.DictReader(open(path)).fieldnames
+def _as_whole(value):
+    """(int, None) on success; (None, 'fractional'|'bad') on failure."""
+    if isinstance(value, bool):
+        return None, "bad"
+    if isinstance(value, int):
+        return value, None
+    if isinstance(value, float):
+        return (int(value), None) if value.is_integer() else (None, "fractional")
+    return None, "bad"
 
 
-def field(row, *names):
-    for n in names:
-        if row.get(n) is not None:
-            return row[n]
-    return ""
-
-
-def main(tasks_path, resources_path, calendar_path=None):
-    errors, warnings = [], []
-
-    tasks, task_cols = read_csv(tasks_path)
-    resources, res_cols = read_csv(resources_path)
-    for legacy, current, cols in [("predecessors", "predecessor_ids", task_cols),
-                                  ("resources", "resource_ids", task_cols)]:
-        if cols and legacy in cols and current not in cols:
-            warnings.append(f"tasks.csv uses legacy column '{legacy}' — rename to '{current}'")
+def validate_network(net: Network) -> ValidationReport:
+    rep = ValidationReport()
 
     # ---- resources ----
     caps = {}
-    for r in resources:
-        rid = r["id"]
+    for r in net.resources:
+        rid = r.id
         if rid in caps:
-            errors.append(f"duplicate resource id {rid}")
-        cap = int(r.get("capacity") or 1)
-        if cap < 1:
-            errors.append(f"resource {rid}: capacity must be >= 1 (got {cap})")
+            rep.error("E_DUP_RESOURCE", f"duplicate resource id {rid}",
+                      resource_ids=[rid])
+        cap, why = _as_whole(r.capacity)
+        if why == "fractional":
+            rep.error("E_FRACTIONAL_CAPACITY",
+                      f"resource {rid}: fractional capacity {r.capacity!r} is not "
+                      f"supported in v1 — use whole units and model partial "
+                      f"availability with the calendar", resource_ids=[rid])
+        elif why == "bad":
+            rep.error("E_BAD_CAPACITY",
+                      f"resource {rid}: capacity must be a number (got {r.capacity!r})",
+                      resource_ids=[rid])
+        elif cap < 1:
+            rep.error("E_BAD_CAPACITY",
+                      f"resource {rid}: capacity must be >= 1 (got {cap})",
+                      resource_ids=[rid])
         elif cap > 1:
-            warnings.append(f"resource {rid}: capacity {cap} > 1 is unusual in CCPM")
-        caps[rid] = cap
+            rep.warning("W_CAPACITY_GT1",
+                        f"resource {rid}: capacity {cap} > 1 is unusual in CCPM",
+                        resource_ids=[rid])
+        caps[rid] = cap if cap is not None else 1
 
     # ---- tasks ----
     ids, preds = set(), {}
-    for t in tasks:
-        tid = t["id"]
-        if tid in ids:
-            errors.append(f"duplicate task id {tid}")
-        ids.add(tid)
-    for t in tasks:
-        tid = t["id"]
-        d_raw = (t.get("optimal_duration") or t.get("realistic_duration")
-                 or t.get("duration_aggressive") or t.get("duration_safe") or t.get("duration"))
-        try:
-            if d_raw is None or int(d_raw) < 1:
-                errors.append(f"task {tid}: duration must be a positive number of days (got {d_raw!r})")
-        except ValueError:
-            errors.append(f"task {tid}: duration must be a positive number of days (got {d_raw!r})")
+    for t in net.tasks:
+        if t.id in ids:
+            rep.error("E_DUP_TASK", f"duplicate task id {t.id}", task_ids=[t.id])
+        ids.add(t.id)
+    for t in net.tasks:
+        tid = t.id
+        d_raw = t.optimal_duration if t.optimal_duration is not None \
+            else t.realistic_duration
+        d, why = _as_whole(d_raw)
+        if why == "fractional":
+            rep.error("E_FRACTIONAL_DURATION",
+                      f"task {tid}: fractional duration {d_raw!r} is not supported "
+                      f"in v1 — durations are whole working days (round up)",
+                      task_ids=[tid])
+        elif why == "bad" or d < 1:
+            rep.error("E_BAD_DURATION",
+                      f"task {tid}: duration must be a positive number of days "
+                      f"(got {d_raw!r})", task_ids=[tid])
+        for rid, alloc in (t.allocations or {}).items():
+            if alloc != 1:
+                rep.error("E_FRACTIONAL_ALLOCATION",
+                          f"task {tid}: allocation {alloc} of resource {rid} is not "
+                          f"supported in v1 — assign whole resources (or split "
+                          f"the task)", task_ids=[tid], resource_ids=[rid])
         links = []
-        for tok in field(t, "predecessor_ids", "predecessors").replace(";", " ").replace(",", " ").split():
-            m = LINK_RE.match(tok)
-            if not m:
-                errors.append(f"task {tid}: malformed dependency link {tok!r}")
+        for tok, link in io.iter_link_tokens(t.predecessor_notation()):
+            if link is None:
+                rep.error("E_MALFORMED_LINK",
+                          f"task {tid}: malformed dependency link {tok!r}",
+                          task_ids=[tid])
                 continue
-            pid, ltype = m.group("id"), (m.group("type") or "FS").upper()
-            if pid not in ids:
-                errors.append(f"task {tid}: unknown predecessor {pid}")
-            if ltype != "FS":
-                warnings.append(f"task {tid}: non-FS link {tok} (supported, but check buffer sizing notes)")
-            links.append(pid)
+            if link.pred_id not in ids:
+                rep.error("E_UNKNOWN_PRED",
+                          f"task {tid}: unknown predecessor {link.pred_id}",
+                          task_ids=[tid, link.pred_id])
+            if link.type != "FS":
+                rep.warning("W_NON_FS_LINK",
+                            f"task {tid}: non-FS link {tok} (supported, but check "
+                            f"buffer sizing notes)", task_ids=[tid])
+            links.append(link.pred_id)
         preds[tid] = links
-        res = [x for x in field(t, "resource_ids", "resources").replace(";", " ").replace(",", " ").split() if x]
-        if not res:
-            errors.append(f"task {tid}: no resources assigned — a task without a resource "
-                          f"cannot contend for capacity and breaks critical chain identification")
-        for rr in res:
+        if not t.resource_ids:
+            rep.error("E_NO_RESOURCE",
+                      f"task {tid}: no resources assigned — a task without a "
+                      f"resource cannot contend for capacity and breaks critical "
+                      f"chain identification", task_ids=[tid])
+        for rr in t.resource_ids:
             if rr not in caps:
-                errors.append(f"task {tid}: unknown resource {rr}")
+                rep.error("E_UNKNOWN_RESOURCE", f"task {tid}: unknown resource {rr}",
+                          task_ids=[tid], resource_ids=[rr])
 
     # ---- cycles ----
     WHITE, GREY, BLACK = 0, 1, 2
     color, stack = defaultdict(int), []
+
     def dfs(tid):
         color[tid] = GREY
         stack.append(tid)
@@ -123,57 +147,76 @@ def main(tasks_path, resources_path, calendar_path=None):
                 continue
             if color[pid] == GREY:
                 cyc = stack[stack.index(pid):] + [pid]
-                errors.append("circular dependency: " + " -> ".join(reversed(cyc)))
+                rep.error("E_CYCLE",
+                          "circular dependency: " + " -> ".join(reversed(cyc)),
+                          task_ids=cyc[:-1])
                 continue
             if color[pid] == WHITE:
                 dfs(pid)
         stack.pop()
         color[tid] = BLACK
+
     for tid in preds:
         if color[tid] == WHITE:
             dfs(tid)
 
     # ---- calendar ----
-    if calendar_path:
-        cal_rows, _ = read_csv(calendar_path)
-        seen = defaultdict(list)
-        for c in cal_rows:
-            rid = c.get("resource_id", "")
-            try:
-                lo, hi, cap = int(c["from"]), int(c["to"]), int(c["capacity"])
-            except (KeyError, ValueError):
-                errors.append(f"calendar: bad row {c} — expected resource_id, from, to, capacity")
-                continue
-            if rid not in caps:
-                errors.append(f"calendar: unknown resource {rid}")
-                continue
-            if lo >= hi:
-                errors.append(f"calendar: {rid} range [{lo},{hi}) is empty or inverted")
-            if cap < 0:
-                errors.append(f"calendar: {rid} capacity must be >= 0 (got {cap})")
-            for plo, phi in seen[rid]:
-                if lo < phi and plo < hi:
-                    errors.append(f"calendar: {rid} ranges [{plo},{phi}) and [{lo},{hi}) overlap")
-            seen[rid].append((lo, hi))
+    seen = defaultdict(list)
+    for w in net.calendar:
+        rid = w.resource_id
+        lo, wl = _as_whole(w.start)
+        hi, wh = _as_whole(w.end)
+        cap, wc = _as_whole(w.capacity)
+        if wl or wh or wc:
+            rep.error("E_CAL_BAD_ROW",
+                      f"calendar: bad row for resource {rid!r} — expected whole "
+                      f"numbers for from, to, capacity (got from={w.start!r}, "
+                      f"to={w.end!r}, capacity={w.capacity!r})",
+                      resource_ids=[rid])
+            continue
+        if rid not in caps:
+            rep.error("E_CAL_UNKNOWN_RESOURCE", f"calendar: unknown resource {rid}",
+                      resource_ids=[rid])
+            continue
+        if lo >= hi:
+            rep.error("E_CAL_EMPTY_RANGE",
+                      f"calendar: {rid} range [{lo},{hi}) is empty or inverted",
+                      resource_ids=[rid])
+        if cap < 0:
+            rep.error("E_CAL_NEG_CAPACITY",
+                      f"calendar: {rid} capacity must be >= 0 (got {cap})",
+                      resource_ids=[rid])
+        for plo, phi in seen[rid]:
+            if lo < phi and plo < hi:
+                rep.error("E_CAL_OVERLAP",
+                          f"calendar: {rid} ranges [{plo},{phi}) and [{lo},{hi}) "
+                          f"overlap", resource_ids=[rid])
+        seen[rid].append((lo, hi))
 
-    # ---- structure report ----
+    # ---- structure ----
     has_succ = {p for links in preds.values() for p in links}
-    starts = sorted(t for t in preds if not preds[t])
-    sinks = sorted(t for t in preds if t not in has_succ)
+    rep.start_tasks = sorted(t for t in preds if not preds[t])
+    rep.terminal_tasks = sorted(t for t in preds if t not in has_succ)
+    return rep
 
-    for w in warnings:
-        print(f"  warning: {w}")
-    if errors:
-        print(f"INVALID — {len(errors)} error(s):")
-        for e in errors:
-            print(f"  - {e}")
+
+def main(tasks_path, resources_path, calendar_path=None):
+    net = io.load_network(tasks_path, resources_path, calendar_path)
+    rep = validate_network(net)
+    for w in net.io_warnings + rep.warnings:
+        print(f"  warning: {w.message}")
+    if not rep.ok:
+        print(f"INVALID — {len(rep.errors)} error(s):")
+        for e in rep.errors:
+            print(f"  - {e.message}")
         return 1
-    print(f"VALID — {len(tasks)} tasks, {len(caps)} resources.")
-    print(f"  start tasks (no predecessors): {', '.join(starts) or '-'}")
-    print(f"  terminal tasks (no successors): {', '.join(sinks) or '-'}")
-    if len(starts) > 1:
+    n_resources = len({r.id for r in net.resources})
+    print(f"VALID — {len(net.tasks)} tasks, {n_resources} resources.")
+    print(f"  start tasks (no predecessors): {', '.join(rep.start_tasks) or '-'}")
+    print(f"  terminal tasks (no successors): {', '.join(rep.terminal_tasks) or '-'}")
+    if len(rep.start_tasks) > 1:
         print("  note: multiple entry points — the scheduler anchors them to one synthetic Start milestone.")
-    if len(sinks) > 1:
+    if len(rep.terminal_tasks) > 1:
         print("  note: multiple exit points — the scheduler anchors them to one synthetic Finish milestone.")
     return 0
 

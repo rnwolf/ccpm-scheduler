@@ -13,10 +13,41 @@ deterministic, so it is scriptable, diffable, and testable.
 
 ## Status
 
-Phase 1 (extraction): the four pipeline stages live as importable, runnable
-modules, extracted behavior-preserving from the
+Phase 1 complete: extracted behavior-preserving from the
 [ccpm-scheduler Claude skill](https://github.com/rnwolf/ccpm-single-project-skill)
-and guarded by byte-identical golden tests.
+(guarded by byte-identical golden tests), with a typed model and library API
+on top. Coming next (see [PLAN.md](PLAN.md)): **Phase 2**, the
+`ccpm-scheduler` CLI proper — subcommands, `--json` output, meaningful exit
+codes, a `schema` subcommand, designed for AI agents — then the Claude skill
+drives the CLI and the [our-planner](https://github.com/rnwolf/our-planner)
+GUI imports the library.
+
+## Library API
+
+```python
+from ccpm_scheduler import (load_network, validate_network,
+                            build_schedule, check_schedule, plot_schedule)
+
+network = load_network("tasks.csv", "resources.csv", "calendar.csv")
+report = validate_network(network)   # ValidationReport with coded Issues
+if report.ok:
+    result = build_schedule(network, title="My project")
+    assert check_schedule(result.schedule, network).ok
+    plot_schedule(result.schedule, "gantt.png",
+                  resources=network.resources, calendar=network.calendar)
+    print(result.stats.status_line("My project"))
+```
+
+Validation issues carry machine-readable codes (`E_CYCLE`, `E_NO_RESOURCE`,
+`E_FRACTIONAL_ALLOCATION`, …) plus the offending task/resource ids, so an
+embedding tool can annotate its own UI. Networks also load from a JSON
+exchange format (`network_from_json` / `network_to_json`) that accepts
+structured predecessor links (`{"id": 2, "type": "SS", "lag": 2}`), numeric
+ids, and per-resource allocation maps — the shape GUI tools naturally emit.
+Fractional allocations and capacities are rejected with precise errors in v1
+(whole resources only).
+
+The four stages are also runnable directly:
 
 ```bash
 python -m ccpm_scheduler.validate tasks.csv resources.csv [calendar.csv]
@@ -26,15 +57,6 @@ python -m ccpm_scheduler.check schedule.csv tasks.csv resources.csv [calendar.cs
 python -m ccpm_scheduler.plot schedule.csv gantt.png --resources resources.csv \
     [--calendar calendar.csv]
 ```
-
-Coming next (see [PLAN.md](PLAN.md)):
-
-- **Phase 1b** — typed model (`Task`, `Resource`, `Schedule`, `ValidationReport`
-  with machine-readable issue codes) and a stable library API
-- **Phase 2** — the `ccpm-scheduler` CLI: subcommands, `--json` output,
-  meaningful exit codes, a `schema` subcommand — designed for AI agents
-- **Phase 3+** — the Claude skill drives this CLI; the
-  [our-planner](https://github.com/rnwolf/our-planner) GUI imports the library
 
 ## Input contract
 

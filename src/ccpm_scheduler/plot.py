@@ -1,11 +1,13 @@
-"""Render a CCPM schedule.csv as a buffer-aware Gantt chart PNG with
+"""Render a CCPM schedule as a buffer-aware Gantt chart PNG with
 dependency-link arrows and a resource-utilization sub-chart on the same
 time axis.
 
-Usage: uv run plot_gantt.py schedule.csv gantt.png [--title "My project"]
-                            [--resources resources.csv]
-                            [--calendar calendar.csv] [--no-utilization]
-                            [--no-links] [--critical-label "Critical path"]
+Library API:  plot_schedule(schedule, out_path, title=..., resources=...,
+                            calendar=..., ...)
+CLI:          python -m ccpm_scheduler.plot schedule.csv gantt.png
+                  [--title "My project"] [--resources resources.csv]
+                  [--calendar calendar.csv] [--no-utilization]
+                  [--no-links] [--critical-label "Critical path"]
 
 The Gantt legend is built from what the schedule actually contains (buffers,
 feeding chains, unlabeled tasks), and the label for the critical bars can be
@@ -40,8 +42,6 @@ distinguishable from other red-ish bars and in greyscale prints), feeding
 chains = colored, buffers = gold/khaki with diagonal hatching, other tasks
 = grey.
 """
-import csv
-import re
 import sys
 from collections import defaultdict
 
@@ -50,11 +50,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-LINK_RE = re.compile(r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF|PB|FB))?(?P<lag>[+-]\d+)?$", re.I)
+from . import io
+from .model import Schedule, as_int
 
-
-def split_ids(s):
-    return [x for x in (s or "").replace(";", " ").replace(",", " ").split() if x]
+split_ids = io.split_tokens
 
 
 def field(row, *names):
@@ -67,36 +66,27 @@ def field(row, *names):
 
 def parse_links(s):
     """'A;B:SS+2' -> [('A','FS',0), ('B','SS',2)]"""
-    links = []
-    for tok in split_ids(s):
-        m = LINK_RE.match(tok)
-        if not m:
-            continue
-        links.append((m.group("id"), (m.group("type") or "FS").upper(),
-                      int(m.group("lag") or 0)))
-    return links
+    return [(l.pred_id, l.type, l.lag)
+            for l in io.parse_links(s, buffer_links=True)]
 
 
-def main(schedule_path, out_path, title="CCPM Schedule",
-         resources_path=None, calendar_path=None,
-         show_util=True, show_links=True, critical_label="Critical chain"):
-    with open(schedule_path, newline="", encoding="utf-8-sig") as f:
-        rows = list(csv.DictReader(f))
-    for r in rows:
-        r["start"], r["finish"] = int(r["start"]), int(r["finish"])
+def plot_schedule(schedule: Schedule, out_path, title="CCPM Schedule",
+                  resources=None, calendar=None,
+                  show_util=True, show_links=True,
+                  critical_label="Critical chain"):
+    """Render the schedule to a PNG. resources is an optional list of
+    Resource (for real capacities; default 1); calendar an optional list of
+    CalendarWindow for per-day overrides."""
+    rows = [r.to_csv_dict() for r in schedule.rows]
 
     capacity = {}
-    if resources_path:
-        with open(resources_path, newline="", encoding="utf-8-sig") as f:
-            for rr in csv.DictReader(f):
-                capacity[rr["id"]] = int(rr.get("capacity") or 1)
+    for rr in resources or []:
+        capacity[rr.id] = as_int(rr.capacity)
 
     overrides = defaultdict(list)  # resource -> [(from, to, capacity)]
-    if calendar_path:
-        with open(calendar_path, newline="", encoding="utf-8-sig") as f:
-            for rr in csv.DictReader(f):
-                overrides[rr["resource_id"]].append(
-                    (int(rr["from"]), int(rr["to"]), int(rr["capacity"])))
+    for w in calendar or []:
+        overrides[w.resource_id].append(
+            (as_int(w.start), as_int(w.end), as_int(w.capacity)))
 
     def cap_on(res, day):
         for lo, hi, cap in overrides.get(res, ()):
@@ -266,6 +256,18 @@ def main(schedule_path, out_path, title="CCPM Schedule",
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
+def main(schedule_path, out_path, title="CCPM Schedule",
+         resources_path=None, calendar_path=None,
+         show_util=True, show_links=True, critical_label="Critical chain"):
+    plot_schedule(
+        io.load_schedule(schedule_path), out_path, title=title,
+        resources=io.load_resources(resources_path) if resources_path else None,
+        calendar=io.load_calendar(calendar_path) if calendar_path else None,
+        show_util=show_util, show_links=show_links,
+        critical_label=critical_label)
     print(f"wrote {out_path}")
 
 

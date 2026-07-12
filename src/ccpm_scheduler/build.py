@@ -1,15 +1,14 @@
-"""Build a CCPM schedule — the deterministic reference implementation of
-ccpm-scheduler/references/algorithm.md. The same input always produces the
-same schedule.
+"""Build a CCPM schedule — the deterministic reference implementation.
+The same input always produces the same schedule.
 
-Usage: uv run build_schedule.py tasks.csv resources.csv
-                                [--calendar calendar.csv]
-                                [--out-dir DIR] [--title "My project"]
+Library API:  build_schedule(network, title=...) -> BuildResult
+CLI:          python -m ccpm_scheduler.build tasks.csv resources.csv
+                  [--calendar calendar.csv] [--out-dir DIR] [--title "My project"]
 
-Writes DIR/schedule.csv and DIR/summary.md (DIR defaults to the current
-directory). Run validate_inputs.py on the input files first — this builder
-assumes a logically valid network (acyclic, known ids, positive durations,
-every task resourced) and reports input problems only crudely.
+The CLI writes DIR/schedule.csv and DIR/summary.md (DIR defaults to the
+current directory). Validate the network first (ccpm_scheduler.validate) —
+this builder assumes a logically valid network (acyclic, known ids, positive
+durations, every task resourced) and reports input problems only crudely.
 
 Steps: normalize (optimal durations = ceil(realistic/2) unless given) ->
 ALAP baseline (calendar-aware) -> resource leveling (earlier-only; if
@@ -25,73 +24,55 @@ chains that run to the project end merge into a zero-duration FINISH
 milestone on the critical chain, and the project buffer attaches to that
 milestone alone -> schedule.csv + summary.md.
 
-Verify the output with validate_schedule.py and render it with
-plot_gantt.py.
+Verify the output with ccpm_scheduler.check and render it with
+ccpm_scheduler.plot.
 """
-import csv, math, os, re, sys
+import math, sys
 from collections import defaultdict
 
-LINK_RE = re.compile(r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF))?(?P<lag>[+-]\d+)?$", re.I)
+from . import io
+from .model import (Network, CcpmError, Schedule, ScheduleRow,
+                    BuildResult, BuildStats, as_int)
 
-
-def field(row, *names):
-    for n in names:
-        if row.get(n) is not None:
-            return row[n]
-    return ""
-
-
-def parse_links(s):
-    out = []
-    for tok in (s or "").replace(";", " ").replace(",", " ").split():
-        m = LINK_RE.match(tok)
-        if m:
-            out.append((m.group("id"), (m.group("type") or "FS").upper(),
-                        int(m.group("lag") or 0)))
-    return out
-
-
-def read_csv(path):
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f))
-
-
-def die(msg):
-    print(f"error: {msg} — run validate_inputs.py for a full report", file=sys.stderr)
-    sys.exit(1)
+LINK_RE = io.INPUT_LINK_RE
 
 
 class Net:
-    def __init__(self, tasks_path, resources_path, calendar_path=None):
+    """The engine's working view of a Network."""
+    def __init__(self, network: Network):
         self.T = {}     # tid -> dict(name, dur, links, res, url, predstr)
-        for t in read_csv(tasks_path):
-            d_opt = field(t, "optimal_duration", "duration_aggressive")
-            d_real = field(t, "realistic_duration", "duration_safe")
-            dur = int(d_opt) if d_opt else math.ceil(int(d_real) / 2)
-            predstr = field(t, "predecessor_ids", "predecessors")
-            self.T[t["id"]] = dict(
-                name=t.get("name", t["id"]), dur=dur,
-                links=parse_links(predstr), predstr=predstr,
-                res=[x for x in field(t, "resource_ids", "resources")
-                     .replace(";", " ").split() if x],
-                url=t.get("url", "") or "")
-        self.caps = {r["id"]: int(r.get("capacity") or 1)
-                     for r in read_csv(resources_path)}
-        self.cal = defaultdict(list)
-        self.has_calendar = bool(calendar_path)
-        if calendar_path:
-            for r in read_csv(calendar_path):
-                self.cal[r["resource_id"]].append(
-                    (int(r["from"]), int(r["to"]), int(r["capacity"])))
+        for t in network.tasks:
+            try:
+                dur = t.duration
+            except ValueError as e:
+                raise CcpmError(str(e)) from None
+            self.T[t.id] = dict(
+                name=t.name, dur=dur,
+                links=[(l.pred_id, l.type, l.lag) for l in t.links],
+                predstr=t.predecessor_notation(),
+                res=list(t.resource_ids),
+                url=t.url or "")
+        try:
+            self.caps = {r.id: as_int(r.capacity, f"resource {r.id}: capacity")
+                         for r in network.resources}
+            self.cal = defaultdict(list)
+            for w in network.calendar:
+                self.cal[w.resource_id].append(
+                    (as_int(w.start, "calendar from"),
+                     as_int(w.end, "calendar to"),
+                     as_int(w.capacity, "calendar capacity")))
+        except ValueError as e:
+            raise CcpmError(str(e)) from None
+        self.has_calendar = network.has_calendar
         self.succ = defaultdict(list)   # tid -> [(sid, type, lag)]
         for tid, t in self.T.items():
             for pid, lt, lag in t["links"]:
                 if pid not in self.T:
-                    die(f"task {tid}: unknown predecessor {pid}")
+                    raise CcpmError(f"task {tid}: unknown predecessor {pid}")
                 self.succ[pid].append((tid, lt, lag))
         for res in {r for t in self.T.values() for r in t["res"]}:
             if res not in self.caps:
-                die(f"unknown resource {res}")
+                raise CcpmError(f"unknown resource {res}")
         # longest precedence path through each task (optimal durations)
         self.path_through = {}
         down, up = {}, {}
@@ -221,8 +202,13 @@ def try_schedule(net, T):
     return None
 
 
-def build(tasks_path, resources_path, calendar_path, out_dir, title):
-    net = Net(tasks_path, resources_path, calendar_path)
+def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
+    """Build the CCPM schedule for a (validated) network.
+
+    Returns the schedule rows, the summary markdown, and build statistics.
+    Raises CcpmError when the network is unschedulable or malformed.
+    """
+    net = Net(network)
     ids = list(net.T)
     dur = {i: net.T[i]["dur"] for i in ids}
     T0 = 0
@@ -233,7 +219,8 @@ def build(tasks_path, resources_path, calendar_path, out_dir, title):
             T0 = T
             break
     if start is None:
-        die("no feasible schedule found (check the calendar leaves room for every task)")
+        raise CcpmError("no feasible schedule found (check the calendar leaves "
+                        "room for every task)")
     fin = {i: start[i] + dur[i] for i in ids}
 
     # ---- critical chain ----
@@ -492,13 +479,7 @@ def build(tasks_path, resources_path, calendar_path, out_dir, title):
                      chain="critical", start=last_cc_fin,
                      finish=last_cc_fin + pb_size, duration=pb_size,
                      resource_ids="", predecessor_ids=pb_pred, url=""))
-    os.makedirs(out_dir, exist_ok=True)
-    cols = ["id", "name", "type", "chain", "start", "finish", "duration",
-            "resource_ids", "predecessor_ids", "url"]
-    with open(os.path.join(out_dir, "schedule.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=cols)
-        w.writeheader()
-        w.writerows(rows)
+    schedule = Schedule(rows=[ScheduleRow(**r) for r in rows])
 
     # ---- summary.md ----
     def link(i):
@@ -534,12 +515,27 @@ def build(tasks_path, resources_path, calendar_path, out_dir, title):
              "half the time and consume buffer — the promise date only moves if "
              "a buffer runs dry. Work the critical chain relay-runner style: "
              "hand off immediately, no multitasking.")
-    with open(os.path.join(out_dir, "summary.md"), "w") as f:
-        f.write("\n".join(L) + "\n")
-    print(f"{title}: T={T0}, CC={'->'.join(cc)} ({sum(dur[i] for i in cc)}d), "
-          f"PB={pb_size}, promise=day {promise}, {len(merges)} merge(s), "
-          f"{len(buffered)} buffered, {len(unprotected)} unprotected"
-          + (", FINISH milestone" if finish_needed else ""))
+
+    stats = BuildStats(deadline=T0, critical_chain=list(cc),
+                       critical_chain_length=sum(dur[i] for i in cc),
+                       project_buffer=pb_size, promise_day=promise,
+                       merges=len(merges), buffered=len(buffered),
+                       unprotected=len(unprotected),
+                       finish_milestone=finish_needed)
+    return BuildResult(schedule=schedule, summary_markdown="\n".join(L) + "\n",
+                       title=title, stats=stats)
+
+
+def main(tasks_path, resources_path, calendar_path, out_dir, title):
+    try:
+        network = io.load_network(tasks_path, resources_path, calendar_path)
+        result = build_schedule(network, title)
+    except CcpmError as e:
+        print(f"error: {e} — run the validator (ccpm_scheduler.validate) "
+              f"for a full report", file=sys.stderr)
+        sys.exit(1)
+    io.write_build_outputs(result, out_dir)
+    print(result.stats.status_line(result.title))
 
 
 if __name__ == "__main__":
@@ -554,4 +550,4 @@ if __name__ == "__main__":
     if len(argv) != 3:
         print(__doc__)
         sys.exit(2)
-    build(argv[1], argv[2], calendar_path, out_dir, title)
+    main(argv[1], argv[2], calendar_path, out_dir, title)

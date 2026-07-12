@@ -1,0 +1,171 @@
+"""Library API tests: typed model, JSON exchange format, coded validation."""
+
+from pathlib import Path
+
+import pytest
+
+from ccpm_scheduler import (load_network, network_from_json, network_to_json,
+                            validate_network, build_schedule, check_schedule,
+                            write_build_outputs, CcpmError)
+
+DATA = Path(__file__).parent / "data"
+GOLDEN = Path(__file__).parent / "golden"
+
+PROJECTS = ["example", "website-launch", "equipment-retrofit",
+            "lab-trials", "kitchen-renovation"]
+
+
+def load(project):
+    d = DATA / project
+    cal = d / "calendar.csv"
+    return load_network(d / "tasks.csv", d / "resources.csv",
+                        cal if cal.exists() else None)
+
+
+def codes(report):
+    return {i.code for i in report.issues}
+
+
+@pytest.mark.parametrize("project", PROJECTS)
+def test_api_pipeline_matches_golden(project, tmp_path):
+    net = load(project)
+    report = validate_network(net)
+    assert report.ok, [i.message for i in report.errors]
+    result = build_schedule(net, title=project)
+    assert check_schedule(result.schedule, net).ok
+    write_build_outputs(result, tmp_path)
+    for name in ("schedule.csv", "summary.md"):
+        assert (tmp_path / name).read_bytes() == \
+            (GOLDEN / project / name).read_bytes(), f"{project}/{name}"
+
+
+@pytest.mark.parametrize("project", PROJECTS)
+def test_json_roundtrip_matches_golden(project, tmp_path):
+    net = network_from_json(network_to_json(load(project)))
+    assert validate_network(net).ok
+    result = build_schedule(net, title=project)
+    write_build_outputs(result, tmp_path)
+    assert (tmp_path / "schedule.csv").read_bytes() == \
+        (GOLDEN / project / "schedule.csv").read_bytes()
+
+
+def test_build_stats():
+    result = build_schedule(load("example"), title="example")
+    s = result.stats
+    assert s.critical_chain == ["A", "B", "D", "F"]
+    assert (s.deadline, s.project_buffer, s.promise_day) == (30, 15, 45)
+    assert s.status_line("example").startswith("example: T=30, CC=A->B->D->F")
+
+
+def test_validation_codes_bad_network():
+    net = network_from_json({
+        "tasks": [
+            {"id": "A", "realistic_duration": 4, "predecessors": "B", "resources": ["r1"]},
+            {"id": "B", "realistic_duration": 4, "predecessors": "A", "resources": ["r1"]},
+            {"id": "C", "realistic_duration": 4, "resources": []},
+            {"id": "D", "realistic_duration": 4.5, "resources": ["r1"]},
+            {"id": "E", "realistic_duration": 4, "predecessors": "GHOST", "resources": ["rX"]},
+        ],
+        "resources": [{"id": "r1", "capacity": 1.5}],
+    })
+    report = validate_network(net)
+    assert not report.ok
+    assert codes(report) >= {"E_CYCLE", "E_NO_RESOURCE", "E_FRACTIONAL_DURATION",
+                             "E_UNKNOWN_PRED", "E_UNKNOWN_RESOURCE",
+                             "E_FRACTIONAL_CAPACITY"}
+    cycle = next(i for i in report.issues if i.code == "E_CYCLE")
+    assert set(cycle.task_ids) == {"A", "B"}
+
+
+def test_fractional_allocation_rejected():
+    net = network_from_json({
+        "tasks": [{"id": 1, "optimal_duration": 3, "resources": {"7": 0.5}}],
+        "resources": [{"id": 7}],
+    })
+    report = validate_network(net)
+    assert "E_FRACTIONAL_ALLOCATION" in codes(report)
+    issue = next(i for i in report.issues if i.code == "E_FRACTIONAL_ALLOCATION")
+    assert issue.task_ids == ("1",) and issue.resource_ids == ("7",)
+
+
+def test_our_planner_shape_accepted():
+    """Structured predecessors, numeric ids, dict resources with whole
+    allocations — the shape our-planner will emit."""
+    net = network_from_json({
+        "tasks": [
+            {"id": 1, "name": "Spec", "realistic_duration": 10,
+             "predecessors": [], "resources": {"1": 1.0}},
+            {"id": 2, "name": "Build", "realistic_duration": 20,
+             "predecessors": [{"id": 1, "type": "FS", "lag": 0}],
+             "resources": {"2": 1.0}},
+            {"id": 3, "name": "Overlap", "optimal_duration": 5,
+             "predecessors": [{"id": 2, "type": "SS", "lag": 2}],
+             "resources": {"1": 1}},
+        ],
+        "resources": [{"id": 1, "name": "Dev"}, {"id": 2, "name": "QA"}],
+    })
+    report = validate_network(net)
+    assert report.ok, [i.message for i in report.errors]
+    assert [i.code for i in report.warnings] == ["W_NON_FS_LINK"]
+    result = build_schedule(net, title="mini")
+    assert check_schedule(result.schedule, net).ok
+    pb = result.schedule.row("PB")
+    assert pb is not None and pb.duration >= 1
+
+
+def test_check_catches_tampering():
+    net = load("example")
+    result = build_schedule(net, title="example")
+    row = result.schedule.row("B")
+    row.start -= 3          # violate precedence with A and overlap resources
+    row.finish -= 3
+    report = check_schedule(result.schedule, net)
+    assert not report.ok
+    assert "E_LINK_VIOLATION" in codes(report)
+
+
+def test_legacy_columns_warn(tmp_path):
+    d = DATA / "example"
+    legacy = tmp_path / "tasks.csv"
+    legacy.write_text((d / "tasks.csv").read_text()
+                      .replace("predecessor_ids", "predecessors", 1))
+    net = load_network(legacy, d / "resources.csv")
+    assert [w.code for w in net.io_warnings] == ["W_LEGACY_COLUMNS"]
+    assert validate_network(net).ok
+
+
+def test_unschedulable_raises_ccpm_error():
+    net = network_from_json({
+        "tasks": [{"id": "A", "optimal_duration": 5, "resources": ["r1"]}],
+        "resources": [{"id": "r1"}],
+        "calendar": [{"resource_id": "r1", "from": 0, "to": 1000, "capacity": 0}],
+    })
+    with pytest.raises(CcpmError):
+        build_schedule(net)
+
+
+def test_report_json_shape():
+    report = validate_network(network_from_json(
+        {"tasks": [{"id": "A", "resources": ["r1"]}],
+         "resources": [{"id": "r1"}]}))
+    j = report.to_json()
+    assert j["ok"] is False
+    assert j["issues"][0]["code"] == "E_BAD_DURATION"
+    assert j["issues"][0]["task_ids"] == ["A"]
+
+
+def test_importing_library_does_not_pull_matplotlib():
+    import subprocess, sys
+    code = ("import sys; import ccpm_scheduler; "
+            "sys.exit(1 if 'matplotlib' in sys.modules else 0)")
+    assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+def test_plot_schedule_api(tmp_path):
+    from ccpm_scheduler import plot_schedule
+    net = load("example")
+    result = build_schedule(net, title="example")
+    png = tmp_path / "gantt.png"
+    plot_schedule(result.schedule, png,
+                  resources=net.resources, calendar=net.calendar)
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
