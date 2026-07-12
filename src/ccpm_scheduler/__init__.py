@@ -27,10 +27,10 @@ The modules are also runnable directly:
     python -m ccpm_scheduler.check out/schedule.csv tasks.csv resources.csv
     python -m ccpm_scheduler.plot out/schedule.csv gantt.png --resources resources.csv
 
-(The `ccpm-scheduler` CLI proper — subcommands, --json output — is Phase 2.)
+The `ccpm-scheduler` CLI wraps all of this — see `ccpm-scheduler --help`.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from .model import (                                        # noqa: F401
     CcpmError, Link, Task, Resource, CalendarWindow, Network,

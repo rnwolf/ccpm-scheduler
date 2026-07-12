@@ -200,25 +200,29 @@ def validate_network(net: Network) -> ValidationReport:
     return rep
 
 
+def report_lines(net: Network, rep: ValidationReport):
+    """Human-readable report text. Returns (lines, exit_code)."""
+    lines = [f"  warning: {w.message}" for w in net.io_warnings + rep.warnings]
+    if not rep.ok:
+        lines.append(f"INVALID — {len(rep.errors)} error(s):")
+        lines.extend(f"  - {e.message}" for e in rep.errors)
+        return lines, 1
+    n_resources = len({r.id for r in net.resources})
+    lines.append(f"VALID — {len(net.tasks)} tasks, {n_resources} resources.")
+    lines.append(f"  start tasks (no predecessors): {', '.join(rep.start_tasks) or '-'}")
+    lines.append(f"  terminal tasks (no successors): {', '.join(rep.terminal_tasks) or '-'}")
+    if len(rep.start_tasks) > 1:
+        lines.append("  note: multiple entry points — the scheduler anchors them to one synthetic Start milestone.")
+    if len(rep.terminal_tasks) > 1:
+        lines.append("  note: multiple exit points — the scheduler anchors them to one synthetic Finish milestone.")
+    return lines, 0
+
+
 def main(tasks_path, resources_path, calendar_path=None):
     net = io.load_network(tasks_path, resources_path, calendar_path)
-    rep = validate_network(net)
-    for w in net.io_warnings + rep.warnings:
-        print(f"  warning: {w.message}")
-    if not rep.ok:
-        print(f"INVALID — {len(rep.errors)} error(s):")
-        for e in rep.errors:
-            print(f"  - {e.message}")
-        return 1
-    n_resources = len({r.id for r in net.resources})
-    print(f"VALID — {len(net.tasks)} tasks, {n_resources} resources.")
-    print(f"  start tasks (no predecessors): {', '.join(rep.start_tasks) or '-'}")
-    print(f"  terminal tasks (no successors): {', '.join(rep.terminal_tasks) or '-'}")
-    if len(rep.start_tasks) > 1:
-        print("  note: multiple entry points — the scheduler anchors them to one synthetic Start milestone.")
-    if len(rep.terminal_tasks) > 1:
-        print("  note: multiple exit points — the scheduler anchors them to one synthetic Finish milestone.")
-    return 0
+    lines, code = report_lines(net, validate_network(net))
+    print("\n".join(lines))
+    return code
 
 
 if __name__ == "__main__":

@@ -13,14 +13,42 @@ deterministic, so it is scriptable, diffable, and testable.
 
 ## Status
 
-Phase 1 complete: extracted behavior-preserving from the
+Phases 1–2 complete: extracted behavior-preserving from the
 [ccpm-scheduler Claude skill](https://github.com/rnwolf/ccpm-single-project-skill)
-(guarded by byte-identical golden tests), with a typed model and library API
-on top. Coming next (see [PLAN.md](PLAN.md)): **Phase 2**, the
-`ccpm-scheduler` CLI proper — subcommands, `--json` output, meaningful exit
-codes, a `schema` subcommand, designed for AI agents — then the Claude skill
-drives the CLI and the [our-planner](https://github.com/rnwolf/our-planner)
-GUI imports the library.
+(guarded by byte-identical golden tests), with a typed model, library API,
+and the `ccpm-scheduler` CLI. Coming next (see [PLAN.md](PLAN.md)): the
+Claude skill drives this CLI (Phase 3), and the
+[our-planner](https://github.com/rnwolf/our-planner) GUI imports the library
+(Phase 4).
+
+## CLI
+
+Built for humans *and* AI agents: exit codes are a contract (0 = ok,
+1 = problems found with the report still emitted, 2 = usage error), `--json`
+prints a machine-readable document, there are no interactive prompts, and the
+same input always produces byte-identical output.
+
+```bash
+ccpm-scheduler validate tasks.csv resources.csv calendar.csv
+ccpm-scheduler build tasks.csv resources.csv --calendar calendar.csv \
+    --out-dir plan --title "Website relaunch"
+ccpm-scheduler check plan/schedule.csv tasks.csv resources.csv calendar.csv
+ccpm-scheduler plot plan/schedule.csv plan/gantt.png --resources resources.csv
+ccpm-scheduler schema network     # JSON Schema of the input format
+```
+
+The network input is either CSV files or a single JSON document (a path, or
+`-` for stdin) in the exchange format:
+
+```bash
+echo '{"tasks": [...], "resources": [...]}' | ccpm-scheduler build - --json
+```
+
+`build` validates first: on a broken network you get the same coded issue
+report as `validate` (exit 1) and no files. `--json` reports carry stable
+machine-readable issue codes (`E_CYCLE`, `E_NO_RESOURCE`,
+`E_FRACTIONAL_ALLOCATION`, …) plus the offending task/resource ids;
+`ccpm-scheduler schema report` describes the shape.
 
 ## Library API
 
@@ -47,16 +75,9 @@ ids, and per-resource allocation maps — the shape GUI tools naturally emit.
 Fractional allocations and capacities are rejected with precise errors in v1
 (whole resources only).
 
-The four stages are also runnable directly:
-
-```bash
-python -m ccpm_scheduler.validate tasks.csv resources.csv [calendar.csv]
-python -m ccpm_scheduler.build tasks.csv resources.csv [--calendar calendar.csv] \
-    [--out-dir DIR] [--title "My project"]
-python -m ccpm_scheduler.check schedule.csv tasks.csv resources.csv [calendar.csv]
-python -m ccpm_scheduler.plot schedule.csv gantt.png --resources resources.csv \
-    [--calendar calendar.csv]
-```
+(`python -m ccpm_scheduler` is equivalent to the `ccpm-scheduler` command;
+the individual stages also remain runnable as `python -m
+ccpm_scheduler.validate` etc. with their original argument conventions.)
 
 ## Input contract
 

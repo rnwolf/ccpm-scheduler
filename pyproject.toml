@@ -1,6 +1,6 @@
 [project]
 name = "ccpm-scheduler"
-version = "0.2.0"
+version = "0.3.0"
 description = "Deterministic Critical Chain Project Management (CCPM) scheduler: validate a project network, build a resource-leveled buffered schedule, verify it, and plot a buffer-aware Gantt chart. Library + CLI, designed for both humans and AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+
+[project.scripts]
+ccpm-scheduler = "ccpm_scheduler.cli:main"
 
 [build-system]
 requires = ["hatchling"]

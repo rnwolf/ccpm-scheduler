@@ -79,17 +79,22 @@ and PNG smoke tests (18 tests). License: MIT OR Apache-2.0 (dual).
 
 ## Phase 2 — The agent-friendly CLI
 
-`ccpm-scheduler` console script with subcommands mirroring the workflow:
-`validate`, `build`, `check`, `plot`, `schema` (emits the JSON input schema so
-an agent can self-serve the contract). Design rules:
+**Done (2026-07-12, v0.3.0)**: `ccpm-scheduler` console script (also
+`python -m ccpm_scheduler`) with subcommands mirroring the workflow:
+`validate`, `build`, `check`, `plot`, `schema` (emits JSON Schemas for the
+network input, schedule output, and validation report so an agent can
+self-serve the contracts). Design rules implemented:
 
-- `--json`: machine-readable results on stdout (validation issues as structured
-  records, build results as schedule JSON); human text otherwise
+- `--json`: machine-readable results on stdout (validation issues as coded
+  records; build emits stats + file paths + the full schedule)
 - exit codes: 0 = ok, 1 = validation/schedule errors (report still emitted),
   2 = usage error — agents branch on codes, not prose
-- no interactive prompts, deterministic output, `-` for stdin/stdout,
-  no ANSI color when piped
+- `build` validates first: broken networks yield the coded issue report and
+  no output files
+- network input as CSV files or a single JSON document (path or `-` = stdin)
+- no interactive prompts, deterministic output, no color
 - error messages say how to fix, not just what's wrong
+- 21 CLI contract tests (exit codes, --json shapes, determinism)
 
 ## Phase 3 — Repoint the Claude skill
 
