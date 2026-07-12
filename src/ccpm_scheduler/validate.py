@@ -106,8 +106,11 @@ def validate_network(net: Network) -> ValidationReport:
             if alloc != 1:
                 rep.error("E_FRACTIONAL_ALLOCATION",
                           f"task {tid}: allocation {alloc} of resource {rid} is not "
-                          f"supported in v1 — assign whole resources (or split "
-                          f"the task)", task_ids=[tid], resource_ids=[rid])
+                          f"supported in v1 — the scheduler assigns exactly one "
+                          f"whole unit of each resource per task (allocation "
+                          f"must be 1); split the task, or drop the allocation "
+                          f"to 1 and model extra capacity via the calendar",
+                          task_ids=[tid], resource_ids=[rid])
         links = []
         for tok, link in io.iter_link_tokens(t.predecessor_notation()):
             if link is None:

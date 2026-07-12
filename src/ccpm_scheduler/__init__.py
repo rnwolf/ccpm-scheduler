@@ -30,7 +30,7 @@ The modules are also runnable directly:
 The `ccpm-scheduler` CLI wraps all of this — see `ccpm-scheduler --help`.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from .model import (                                        # noqa: F401
     CcpmError, Link, Task, Resource, CalendarWindow, Network,
