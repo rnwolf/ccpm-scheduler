@@ -111,20 +111,27 @@ invocation to plain `uvx ccpm-scheduler`.
 
 ## Phase 4 — our-planner integration
 
-New adapter in our-planner (e.g. `src/operations/ccpm_operations.py`):
+**Done (2026-07-12, our-planner branch `stage-16-ccpm-roundtrip`, commit
+3fc7a1e)** — implemented as our-planner's own planned Stage 16 ("CCPM round
+trip"): `CcpmOperations` (`src/operations/ccpm_operations.py`) with this
+package as a git dependency, two File-menu items:
 
-1. **Export**: selected project's tasks → ccpm JSON (ids, durations,
-   predecessors pass through; capacity vectors → calendar windows).
-2. **Validate**: on errors, dialog listing structured issues with task
-   references; user fixes the network and retries.
-3. **Apply**: write the schedule back — task positions, buffer rows as tasks of
-   new `type` `project_buffer`/`feeding_buffer` attached with the reserved
-   `PB`/`FB` links, chain membership mapped onto the `chains` model
-   (critical chain → `is_critical`).
+1. **Export CCPM Network...** — chosen project → `tasks.csv`/`resources.csv`/
+   `calendar.csv` in this package's input format (per-day capacity vectors
+   run-length-encoded into `[from, to)` windows).
+2. **Schedule with CCPM...** — in-process: `network_from_json` (structured
+   links, allocation maps) → `validate_network` (coded issues in a dialog on
+   failure) → `build_schedule` → `check_schedule` → schedule imported as a
+   NEW project `<source> (CCPM)` beside the original via the pre-existing
+   `import_ccpm_schedule` machinery — buffers become `project_buffer`/
+   `feeding_buffer` tasks with `PB`/`FB` links, chains map onto the app's
+   chain model, and the shared resource pool is reused by name.
 
-Net effect: build the network in the GUI, select a project, trigger
-"Schedule with CCPM", fix reported issues, get back a buffered leveled plan —
-repeatable per project for rolling-wave planning.
+Applying the CCPM schedule to a *new* project (side-by-side comparison)
+rather than mutating the source project follows our-planner's own Stage 16
+design; complete tasks are excluded, buffers never exported, and fractional
+allocations surface this package's E_FRACTIONAL_ALLOCATION error. 11 tests in
+our-planner mirror the worked example (CC 30d, PB 15, promise day 45).
 
 ## Phase 5 — Close the model gaps (follow-up)
 
