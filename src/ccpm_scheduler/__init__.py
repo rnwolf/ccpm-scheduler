@@ -30,7 +30,15 @@ The modules are also runnable directly:
 The `ccpm-scheduler` CLI wraps all of this — see `ccpm-scheduler --help`.
 """
 
-__version__ = "0.3.1"
+# Single-sourced from pyproject.toml via the installed package metadata, so
+# the runtime version can never drift from the published one again (0.4.0
+# shipped reporting 0.3.1 because this used to be a duplicated literal).
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+try:
+    __version__ = _pkg_version("ccpm-scheduler")
+except PackageNotFoundError:  # running from a source tree without install
+    __version__ = "0+unknown"
 
 from .model import (                                        # noqa: F401
     CcpmError, Link, Task, Resource, CalendarWindow, Network,

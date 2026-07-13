@@ -106,8 +106,9 @@ of truth. Verified end-to-end with the GitHub-installed CLI on the worked
 example + all four eval inputs: validate, build (byte-identical to goldens),
 check, plot. (A full agent-behavior eval rerun via the skill-creator harness
 remains optional follow-up; the mechanical toolchain path is proven.)
-Release tagged v0.3.0. Once published on PyPI, simplify the skill's
-invocation to plain `uvx ccpm-scheduler`.
+Release tagged v0.3.0. **Published to PyPI as of v0.4.0 (2026-07-13, via
+the GitHub release workflow)** — the skill and our-planner now consume the
+PyPI package; the skill invokes plain `uvx ccpm-scheduler`.
 
 ## Phase 4 — our-planner integration
 
