@@ -142,7 +142,16 @@ SCHEDULE_SCHEMA = {
                     "description": "critical | feeding-<n> | none"},
                 "start": {"type": "integer", "minimum": 0},
                 "finish": {"type": "integer", "minimum": 0},
-                "duration": {"type": "integer", "minimum": 0},
+                "duration": {"type": "integer", "minimum": 0,
+                             "description": "The scheduled (optimal) duration."},
+                "realistic_duration": {
+                    "type": ["integer", "null"],
+                    "description": "The task's realistic estimate (safety "
+                                   "included) when known; null for buffers, "
+                                   "milestones, and tasks that only gave an "
+                                   "optimal estimate. Compare against "
+                                   "duration to audit how much safety moved "
+                                   "into the chain's buffer."},
                 "resource_ids": {
                     "type": "string",
                     "description": "';'-separated resource ids (empty for "

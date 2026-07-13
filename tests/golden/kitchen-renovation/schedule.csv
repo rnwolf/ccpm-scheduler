@@ -1,9 +1,9 @@
-id,name,type,chain,start,finish,duration,resource_ids,predecessor_ids,url
-K1,Demolition,task,critical,3,7,4,builder,,
-K3,Plumbing,task,critical,7,10,3,plumber,K1,
-K2,Electrics,task,feeding-1,9,12,3,electrician,K1,
-K6,Tiling,task,critical,10,14,4,builder,K3,
-K4,Cabinets,task,critical,14,19,5,builder,K3;FB1:FB,
-K5,Worktops and finishing,task,critical,19,22,3,builder,K4,
-FB1,Feeding buffer 1,feeding_buffer,feeding-1,12,14,2,,K2:FB,
-PB,Project buffer,project_buffer,critical,22,32,10,,K5:PB,
+id,name,type,chain,start,finish,duration,realistic_duration,resource_ids,predecessor_ids,url
+K1,Demolition,task,critical,3,7,4,8,builder,,
+K3,Plumbing,task,critical,7,10,3,6,plumber,K1,
+K2,Electrics,task,feeding-1,9,12,3,6,electrician,K1,
+K6,Tiling,task,critical,10,14,4,8,builder,K3,
+K4,Cabinets,task,critical,14,19,5,10,builder,K3;FB1:FB,
+K5,Worktops and finishing,task,critical,19,22,3,6,builder,K4,
+FB1,Feeding buffer 1,feeding_buffer,feeding-1,12,14,2,,,K2:FB,
+PB,Project buffer,project_buffer,critical,22,32,10,,,K5:PB,

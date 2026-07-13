@@ -45,9 +45,13 @@ HTML in any browser to zoom, pan, drag nodes, toggle hierarchical/free
 layout, and click a node to inspect its schedule, resources, and links. The
 Gantt shows *when*; the graph shows *why* — colors match the Gantt
 (critical chain firebrick, feeding chains colored, buffers gold/khaki with
-dashed attachment edges). Pass `--tasks tasks.csv` to show each task's
-realistic estimate next to its scheduled (optimal) duration — the
-optimal/realistic balance is exactly what teams debate in front of this view.
+dashed attachment edges). A **resource filter** (All resources / Unassigned /
+each named resource) fades everything except the selected resource's tasks,
+so each team member can see their part in the context of the whole plan.
+Task nodes show the realistic estimate next to the scheduled (optimal)
+duration — the optimal/realistic balance is exactly what teams debate in
+front of this view. (`--tasks tasks.csv` supplies the estimates for
+schedules produced before v0.7; newer `schedule.csv` files carry them.)
 
 The network input is either CSV files or a single JSON document (a path, or
 `-` for stdin) in the exchange format:
@@ -116,7 +120,10 @@ Durations are working days; the schedule uses integer day offsets from day 0.
 ## Output
 
 - `schedule.csv` — tasks and buffers with start/finish, chain membership
-  (`critical`, `feeding-n`), and link notation (buffers attached via `:PB`/`:FB`)
+  (`critical`, `feeding-n`), link notation (buffers attached via `:PB`/`:FB`),
+  and each task's `realistic_duration` alongside its scheduled (optimal)
+  `duration` — filter by chain to audit how much safety left the tasks
+  versus what landed in the chain's buffer
 - `summary.md` — critical chain, project duration, buffer sizes, promised
   completion date (= end of the project buffer)
 - `gantt.png` — critical chain, feeding chains, buffers, dependency arrows,

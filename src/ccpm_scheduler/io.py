@@ -264,6 +264,8 @@ def load_schedule(path) -> Schedule:
         chain=r.get("chain", "none") or "none",
         start=int(r["start"]), finish=int(r["finish"]),
         duration=int(r["duration"]),
+        realistic_duration=(int(r["realistic_duration"])
+                            if r.get("realistic_duration") else None),
         resource_ids=_first(r, "resource_ids", "resources") or "",
         predecessor_ids=_first(r, "predecessor_ids", "predecessors") or "",
         url=r.get("url", "") or "") for r in rows])
@@ -279,6 +281,9 @@ def schedule_from_json(data) -> Schedule:
         chain=r.get("chain", "none") or "none",
         start=int(r["start"]), finish=int(r["finish"]),
         duration=int(r["duration"]),
+        realistic_duration=(int(r["realistic_duration"])
+                            if r.get("realistic_duration") not in (None, "")
+                            else None),
         resource_ids=r.get("resource_ids", "") or "",
         predecessor_ids=_first(r, "predecessor_ids", "predecessors") or "",
         url=r.get("url", "") or "") for r in rows])

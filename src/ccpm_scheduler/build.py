@@ -46,8 +46,13 @@ class Net:
                 dur = t.duration
             except ValueError as e:
                 raise CcpmError(str(e)) from None
+            try:
+                realistic = (as_int(t.realistic_duration)
+                             if t.realistic_duration not in (None, "") else None)
+            except ValueError:
+                realistic = None
             self.T[t.id] = dict(
-                name=t.name, dur=dur,
+                name=t.name, dur=dur, realistic=realistic,
                 links=[(l.pred_id, l.type, l.lag) for l in t.links],
                 predstr=t.predecessor_notation(),
                 res=list(t.resource_ids),
@@ -454,6 +459,7 @@ def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
         rows.append(dict(id=i, name=net.T[i]["name"], type="task",
                          chain="critical" if i in cc_set else chain_label.get(i, "none"),
                          start=start[i], finish=fin[i], duration=dur[i],
+                         realistic_duration=net.T[i]["realistic"],
                          resource_ids=";".join(net.T[i]["res"]),
                          predecessor_ids=out_preds(i, net.T[i]["predstr"]),
                          url=net.T[i]["url"]))

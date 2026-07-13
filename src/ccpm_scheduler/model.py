@@ -186,7 +186,8 @@ class ValidationReport:
 
 
 SCHEDULE_COLUMNS = ["id", "name", "type", "chain", "start", "finish",
-                    "duration", "resource_ids", "predecessor_ids", "url"]
+                    "duration", "realistic_duration", "resource_ids",
+                    "predecessor_ids", "url"]
 
 TYPE_TASK = "task"
 TYPE_PROJECT_BUFFER = "project_buffer"
@@ -204,7 +205,11 @@ class ScheduleRow:
     chain: str           # critical | feeding-<n> | none
     start: int
     finish: int
-    duration: int
+    duration: int        # the scheduled (optimal) duration
+    # the task's realistic estimate (safety included) when known — empty for
+    # buffers/milestones. Lets readers audit how much safety left each task
+    # versus what landed in the chain's buffer.
+    realistic_duration: int | None = None
     resource_ids: str = ""
     predecessor_ids: str = ""
     url: str = ""

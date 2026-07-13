@@ -197,7 +197,11 @@ def plot_schedule(schedule: Schedule, out_path, title="CCPM Schedule",
     ax.set_yticks(yticks)
     ax.set_yticklabels(ylabels, fontsize=9)
     ax.set_title(title, loc="left")
+    ax.set_axisbelow(True)
     ax.grid(axis="x", linestyle=":", alpha=0.5)
+    # horizontal guide per task row: connects the label to its bar, which
+    # matters more the further right (longer) the schedule gets
+    ax.grid(axis="y", linestyle=":", alpha=0.35)
     ax.set_xlim(0, t_end + 1)
     ax.set_ylim(0.3, len(rows) + 0.7)
     handles = []
@@ -249,13 +253,18 @@ def plot_schedule(schedule: Schedule, out_path, title="CCPM Schedule",
         axu.legend(handles=util_handles, loc="lower right",
                    bbox_to_anchor=(1.0, 1.0), ncol=len(util_handles),
                    fontsize=8, frameon=False)
+        axu.set_axisbelow(True)
         axu.grid(axis="x", linestyle=":", alpha=0.5)
+        # same per-row guide as the Gantt panel, for the resource rows
+        axu.grid(axis="y", linestyle=":", alpha=0.35)
         axu.set_xlabel("Working day")
     else:
         ax.set_xlabel("Working day")
 
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
+    # bbox_inches="tight" sizes the margins to the content, so long task
+    # labels are never clipped off the left edge (tight_layout could not
+    # handle this figure and warned)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 

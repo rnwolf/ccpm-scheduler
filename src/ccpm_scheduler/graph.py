@@ -79,10 +79,19 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
 
     ids = {r.id for r in rows}
     nodes, edges = [], []
+    all_resources = sorted({res for r in rows
+                            for res in io.split_tokens(r.resource_ids)})
+
     for r in rows:
         background, border, dashed_border, shape = _node_style(r, feed_color)
         dark = r.chain == "critical" and r.type == "task"
-        r_realistic = realistic.get(r.id) if r.type == "task" else None
+        r_realistic = None
+        if r.type == "task":
+            # schedule.csv carries the estimate since v0.7; --tasks remains
+            # the fallback for schedules produced before that
+            r_realistic = (r.realistic_duration
+                           if r.realistic_duration is not None
+                           else realistic.get(r.id))
         title = f"{r.name}: day {r.start} – {r.finish} ({r.duration}d)"
         if r_realistic is not None:
             title = (f"{r.name}: day {r.start} – {r.finish} "
@@ -106,6 +115,7 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
                 "duration": r.duration,
                 "realistic": r_realistic,
                 "resources": r.resource_ids.replace(";", ", "),
+                "resource_list": io.split_tokens(r.resource_ids),
                 "predecessors": r.predecessor_ids.replace(";", "; "),
                 "url": r.url,
             },
@@ -118,6 +128,7 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
             if link.lag:
                 label += f"{link.lag:+d}"
             edges.append({
+                "id": f"e{len(edges)}",
                 "from": link.pred_id, "to": r.id, "arrows": "to",
                 "dashes": [6, 4] if buffer_link else False,
                 "color": {"color": "#666666" if buffer_link else "#404040"},
@@ -148,7 +159,7 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
                     f"{pb.duration}d — promised completion: day {pb.finish}")
 
     return {"nodes": nodes, "edges": edges, "legend": legend,
-            "summary": summary}
+            "summary": summary, "resources": all_resources}
 
 
 _TEMPLATE = """<!DOCTYPE html>
@@ -185,6 +196,11 @@ _TEMPLATE = """<!DOCTYPE html>
                 padding-top: 10px; }
     #controls button { font-size: 0.8rem; padding: 4px 10px;
                        margin-right: 6px; cursor: pointer; }
+    #filter-box { margin-bottom: 14px; padding-bottom: 12px;
+                  border-bottom: 1px solid #eee; }
+    #filter-box label { font-weight: bold; color: #666; font-size: 0.8rem;
+                        display: block; margin-bottom: 4px; }
+    #resource-filter { width: 100%; font-size: 0.9rem; padding: 3px; }
   </style>
 </head>
 <body>
@@ -195,6 +211,10 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="main">
     <div id="network-container"></div>
     <div id="sidebar">
+      <div id="filter-box">
+        <label for="resource-filter">Resource filter</label>
+        <select id="resource-filter"></select>
+      </div>
       <h2>Task inspector</h2>
       <div id="placeholder-text">Click a node to view task details.
         Drag nodes, scroll to zoom, drag the background to pan.</div>
@@ -244,6 +264,39 @@ _TEMPLATE = """<!DOCTYPE html>
     const nodes = new vis.DataSet(GRAPH.nodes);
     const edges = new vis.DataSet(GRAPH.edges);
     const container = document.getElementById('network-container');
+
+    // Resource filter: matching tasks stay solid, everything else fades so
+    // each person can see their own tasks in the context of the whole plan.
+    const filterSelect = document.getElementById('resource-filter');
+    const filterOptions = [['__all__', 'All resources'],
+                           ['__unassigned__', 'Unassigned']]
+      .concat(GRAPH.resources.map(r => [r, r]));
+    for (const [value, text] of filterOptions) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.innerText = text;
+      filterSelect.appendChild(opt);
+    }
+    filterSelect.addEventListener('change', () => {
+      const v = filterSelect.value;
+      const matches = (n) => {
+        if (v === '__all__') return true;
+        const d = n.data;
+        if (v === '__unassigned__')
+          return d.type === 'task' && d.duration > 0
+            && d.resource_list.length === 0;
+        return d.resource_list.includes(v);
+      };
+      const matched = new Set(
+        GRAPH.nodes.filter(matches).map(n => n.id));
+      nodes.update(GRAPH.nodes.map(n => (
+        { id: n.id, opacity: matched.has(n.id) ? 1 : 0.15 })));
+      edges.update(GRAPH.edges.map(e => (
+        { id: e.id,
+          color: { color: e.color.color,
+                   opacity: matched.has(e.from) && matched.has(e.to)
+                     ? 1 : 0.12 } })));
+    });
 
     const hierarchical = {
       layout: { hierarchical: { enabled: true, direction: 'LR',

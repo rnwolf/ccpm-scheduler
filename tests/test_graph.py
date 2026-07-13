@@ -104,12 +104,9 @@ def test_cli_graph_missing_schedule_exit_2(tmp_path):
     assert r.returncode == 2
 
 
-def test_realistic_estimates_enrich_nodes():
-    from ccpm_scheduler import load_tasks
-    d = DATA / "example"
-    schedule = example_schedule()
-    tasks = load_tasks(d / "tasks.csv")
-    html = render_network_html(schedule, tasks=tasks)
+def test_realistic_estimates_from_schedule():
+    """Since v0.7 schedule.csv carries realistic_duration - no --tasks needed."""
+    html = render_network_html(example_schedule())
     graph = embedded_graph(html)
     by_id = {n["id"]: n for n in graph["nodes"]}
     # example: A realistic 10 -> scheduled (optimal) 5
@@ -121,9 +118,31 @@ def test_realistic_estimates_enrich_nodes():
     assert "realistic" not in by_id["PB"]["title"]
 
 
-def test_without_tasks_realistic_is_null():
+def test_tasks_fallback_for_pre_v07_schedules():
+    """Older schedule.csv files lack the column - --tasks still fills it."""
+    from ccpm_scheduler import load_tasks
+    d = DATA / "example"
+    schedule = example_schedule()
+    for r in schedule.rows:
+        r.realistic_duration = None    # simulate a pre-v0.7 schedule
+    assert embedded_graph(render_network_html(schedule))["nodes"][0]\
+        ["data"]["realistic"] is None
+    graph = embedded_graph(render_network_html(
+        schedule, tasks=load_tasks(d / "tasks.csv")))
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    assert by_id["A"]["data"]["realistic"] == 10
+
+
+def test_resource_filter_payload():
     graph = embedded_graph(render_network_html(example_schedule()))
-    assert all(n["data"]["realistic"] is None for n in graph["nodes"])
+    assert graph["resources"] == ["blue", "green", "red"]
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    assert by_id["B"]["data"]["resource_list"] == ["green"]
+    assert by_id["PB"]["data"]["resource_list"] == []
+    # edges carry ids so the filter can fade them
+    assert all(e["id"].startswith("e") for e in graph["edges"])
+    html = render_network_html(example_schedule())
+    assert 'id="resource-filter"' in html and "__unassigned__" in html
 
 
 def test_cli_graph_with_tasks(tmp_path):

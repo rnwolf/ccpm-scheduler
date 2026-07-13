@@ -1,9 +1,9 @@
-id,name,type,chain,start,finish,duration,resource_ids,predecessor_ids,url
-A,Spec,task,critical,0,5,5,blue,,https://example.com/wiki/spec
-C,Design,task,feeding-1,5,10,5,blue,A,https://example.com/wiki/design
-B,Build,task,critical,5,15,10,green,A,https://example.com/tickets/build
-E,Test rig,task,feeding-1,15,20,5,green,C,https://example.com/tickets/test-rig
-D,Integrate,task,critical,15,25,10,blue,B,https://example.com/tickets/integrate
-F,Commission,task,critical,25,30,5,red,D;FB1:FB,https://example.com/wiki/commissioning
-FB1,Feeding buffer 1,feeding_buffer,feeding-1,20,25,5,,E:FB,
-PB,Project buffer,project_buffer,critical,30,45,15,,F:PB,
+id,name,type,chain,start,finish,duration,realistic_duration,resource_ids,predecessor_ids,url
+A,Spec,task,critical,0,5,5,10,blue,,https://example.com/wiki/spec
+C,Design,task,feeding-1,5,10,5,10,blue,A,https://example.com/wiki/design
+B,Build,task,critical,5,15,10,20,green,A,https://example.com/tickets/build
+E,Test rig,task,feeding-1,15,20,5,10,green,C,https://example.com/tickets/test-rig
+D,Integrate,task,critical,15,25,10,20,blue,B,https://example.com/tickets/integrate
+F,Commission,task,critical,25,30,5,10,red,D;FB1:FB,https://example.com/wiki/commissioning
+FB1,Feeding buffer 1,feeding_buffer,feeding-1,20,25,5,,,E:FB,
+PB,Project buffer,project_buffer,critical,30,45,15,,,F:PB,
