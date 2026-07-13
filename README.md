@@ -34,8 +34,18 @@ ccpm-scheduler build tasks.csv resources.csv --calendar calendar.csv \
     --out-dir plan --title "Website relaunch"
 ccpm-scheduler check plan/schedule.csv tasks.csv resources.csv calendar.csv
 ccpm-scheduler plot plan/schedule.csv plan/gantt.png --resources resources.csv
+ccpm-scheduler graph plan/schedule.csv plan/project-network.html \
+    --title "Website relaunch"   # interactive dependency graph
 ccpm-scheduler schema network     # JSON Schema of the input format
 ```
+
+`graph` writes a standalone interactive network view of the schedule
+(vis-network from a CDN, data embedded — no build step or server): open the
+HTML in any browser to zoom, pan, drag nodes, toggle hierarchical/free
+layout, and click a node to inspect its schedule, resources, and links. The
+Gantt shows *when*; the graph shows *why* — colors match the Gantt
+(critical chain firebrick, feeding chains colored, buffers gold/khaki with
+dashed attachment edges).
 
 The network input is either CSV files or a single JSON document (a path, or
 `-` for stdin) in the exchange format:
@@ -109,6 +119,9 @@ Durations are working days; the schedule uses integer day offsets from day 0.
   completion date (= end of the project buffer)
 - `gantt.png` — critical chain, feeding chains, buffers, dependency arrows,
   and a resource-utilization panel on the same time axis
+- `project-network.html` (via `graph`) — standalone interactive dependency
+  graph of the same schedule, for exploring the network structure the
+  Gantt can't show
 
 ## Development
 

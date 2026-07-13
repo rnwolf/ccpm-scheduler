@@ -170,6 +170,21 @@ def cmd_plot(parser, args):
     return 0
 
 
+def cmd_graph(parser, args):
+    from .graph import write_network_html
+    try:
+        schedule = io.load_schedule(args.schedule)
+    except OSError as e:
+        _fail_usage(parser, f"cannot read schedule: {e}")
+    write_network_html(schedule, args.out, title=args.title,
+                       critical_label=args.critical_label)
+    if args.json:
+        _emit({"ok": True, "wrote": args.out})
+    else:
+        print(f"wrote {args.out}")
+    return 0
+
+
 def cmd_schema(parser, args):
     _emit(SCHEMAS[args.which])
     return 0
@@ -261,6 +276,23 @@ def build_parser():
     sp.add_argument("--json", action="store_true",
                     help="print {ok, wrote} as JSON")
     sp.set_defaults(func=cmd_plot)
+
+    sp = subs.add_parser(
+        "graph", help="render a schedule as an interactive network-graph HTML",
+        description="Standalone HTML dependency graph (vis-network via CDN, "
+                    "data embedded — no build step or server): open it in a "
+                    "browser to zoom, pan, drag nodes, and click a node to "
+                    "inspect task details. Complements the Gantt: the chart "
+                    "shows when, the graph shows why.")
+    sp.add_argument("schedule", metavar="SCHEDULE.csv")
+    sp.add_argument("out", metavar="OUT.html")
+    sp.add_argument("--title", default="CCPM Schedule")
+    sp.add_argument("--critical-label", default="Critical chain",
+                    help='legend label for critical nodes (e.g. "Critical '
+                         'path" for a plain CPM schedule)')
+    sp.add_argument("--json", action="store_true",
+                    help="print {ok, wrote} as JSON")
+    sp.set_defaults(func=cmd_graph)
 
     sp = subs.add_parser(
         "schema", help="print a JSON Schema for the data contracts",

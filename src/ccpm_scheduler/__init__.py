@@ -54,6 +54,7 @@ from .io import (                                           # noqa: F401
 from .validate import validate_network                      # noqa: F401
 from .build import build_schedule                           # noqa: F401
 from .check import check_schedule                           # noqa: F401
+from .graph import render_network_html, write_network_html  # noqa: F401
 
 __all__ = [
     "CcpmError", "Link", "Task", "Resource", "CalendarWindow", "Network",
@@ -64,6 +65,7 @@ __all__ = [
     "network_from_json", "network_to_json", "schedule_from_json",
     "write_schedule_csv", "write_build_outputs",
     "validate_network", "build_schedule", "check_schedule", "plot_schedule",
+    "render_network_html", "write_network_html",
     "__version__",
 ]
 
