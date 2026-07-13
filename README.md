@@ -35,7 +35,7 @@ ccpm-scheduler build tasks.csv resources.csv --calendar calendar.csv \
 ccpm-scheduler check plan/schedule.csv tasks.csv resources.csv calendar.csv
 ccpm-scheduler plot plan/schedule.csv plan/gantt.png --resources resources.csv
 ccpm-scheduler graph plan/schedule.csv plan/project-network.html \
-    --title "Website relaunch"   # interactive dependency graph
+    --tasks tasks.csv --title "Website relaunch"   # interactive dependency graph
 ccpm-scheduler schema network     # JSON Schema of the input format
 ```
 
@@ -45,7 +45,9 @@ HTML in any browser to zoom, pan, drag nodes, toggle hierarchical/free
 layout, and click a node to inspect its schedule, resources, and links. The
 Gantt shows *when*; the graph shows *why* — colors match the Gantt
 (critical chain firebrick, feeding chains colored, buffers gold/khaki with
-dashed attachment edges).
+dashed attachment edges). Pass `--tasks tasks.csv` to show each task's
+realistic estimate next to its scheduled (optimal) duration — the
+optimal/realistic balance is exactly what teams debate in front of this view.
 
 The network input is either CSV files or a single JSON document (a path, or
 `-` for stdin) in the exchange format:

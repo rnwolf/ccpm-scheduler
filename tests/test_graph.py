@@ -102,3 +102,37 @@ def test_cli_graph(tmp_path):
 def test_cli_graph_missing_schedule_exit_2(tmp_path):
     r = cli("graph", tmp_path / "nope.csv", tmp_path / "out.html")
     assert r.returncode == 2
+
+
+def test_realistic_estimates_enrich_nodes():
+    from ccpm_scheduler import load_tasks
+    d = DATA / "example"
+    schedule = example_schedule()
+    tasks = load_tasks(d / "tasks.csv")
+    html = render_network_html(schedule, tasks=tasks)
+    graph = embedded_graph(html)
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    # example: A realistic 10 -> scheduled (optimal) 5
+    assert by_id["A"]["data"]["realistic"] == 10
+    assert by_id["A"]["data"]["duration"] == 5
+    assert "5d optimal, 10d realistic" in by_id["A"]["title"]
+    # buffers carry no estimate
+    assert by_id["PB"]["data"]["realistic"] is None
+    assert "realistic" not in by_id["PB"]["title"]
+
+
+def test_without_tasks_realistic_is_null():
+    graph = embedded_graph(render_network_html(example_schedule()))
+    assert all(n["data"]["realistic"] is None for n in graph["nodes"])
+
+
+def test_cli_graph_with_tasks(tmp_path):
+    d = DATA / "example"
+    cli("build", d / "tasks.csv", d / "resources.csv",
+        "--calendar", d / "calendar.csv", "--out-dir", tmp_path,
+        "--title", "example")
+    out = tmp_path / "project-network.html"
+    r = cli("graph", tmp_path / "schedule.csv", out,
+            "--tasks", d / "tasks.csv", "--title", "example")
+    assert r.returncode == 0, r.stderr
+    assert '"realistic": 10' in out.read_text()

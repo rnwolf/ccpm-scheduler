@@ -11,16 +11,22 @@ colored, buffers gold/khaki with dashed borders (buffer attachments are
 dashed edges — they are not work; slippage consumes them), other tasks grey,
 zero-duration milestones as diamonds. Non-FS links carry an SS/FF/SF label.
 
-Library API:  render_network_html(schedule, title=...) -> str
-              write_network_html(schedule, path, title=...)
+Pass the input tasks (`tasks=` / `--tasks tasks.csv`) to enrich each task
+node with its realistic duration estimate — schedule.csv only carries the
+scheduled (optimal) duration, and reviewing the optimal/realistic balance is
+exactly what teams do in front of this view.
+
+Library API:  render_network_html(schedule, title=..., tasks=...) -> str
+              write_network_html(schedule, path, title=..., tasks=...)
 CLI:          ccpm-scheduler graph schedule.csv project-network.html
+                  [--tasks tasks.csv]
 """
 from __future__ import annotations
 
 import json
 
 from . import io
-from .model import Schedule
+from .model import Schedule, as_int
 
 CRITICAL_COLOR = "#b22222"          # firebrick, as on the Gantt
 OTHER_COLOR = "#9e9e9e"
@@ -46,8 +52,26 @@ def _node_style(row, feed_color):
     return OTHER_COLOR, "#616161", False, "box"
 
 
-def _graph_data(schedule: Schedule, critical_label):
+def _estimates(tasks):
+    """task id -> realistic duration (whole days), for tasks that have one."""
+    if tasks is None:
+        return {}
+    if hasattr(tasks, "tasks"):     # a Network is fine too
+        tasks = tasks.tasks
+    out = {}
+    for t in tasks:
+        if t.realistic_duration in (None, ""):
+            continue
+        try:
+            out[t.id] = as_int(t.realistic_duration)
+        except ValueError:
+            continue
+    return out
+
+
+def _graph_data(schedule: Schedule, critical_label, tasks=None):
     rows = schedule.rows
+    realistic = _estimates(tasks)
     feeding_chains = sorted({r.chain for r in rows
                              if r.chain.startswith("feeding")})
     feed_color = {c: FEEDING_PALETTE[i % len(FEEDING_PALETTE)]
@@ -58,6 +82,11 @@ def _graph_data(schedule: Schedule, critical_label):
     for r in rows:
         background, border, dashed_border, shape = _node_style(r, feed_color)
         dark = r.chain == "critical" and r.type == "task"
+        r_realistic = realistic.get(r.id) if r.type == "task" else None
+        title = f"{r.name}: day {r.start} – {r.finish} ({r.duration}d)"
+        if r_realistic is not None:
+            title = (f"{r.name}: day {r.start} – {r.finish} "
+                     f"({r.duration}d optimal, {r_realistic}d realistic)")
         nodes.append({
             "id": r.id,
             "label": f"{r.id}\n{r.name}" if r.name and r.name != r.id else r.id,
@@ -69,12 +98,13 @@ def _graph_data(schedule: Schedule, critical_label):
             "shapeProperties": {"borderDashes": [4, 3] if dashed_border
                                 else False},
             "borderWidth": 2 if r.type != "task" else 1,
-            "title": f"{r.name}: day {r.start} – {r.finish} ({r.duration}d)",
+            "title": title,
             # inspector payload (vis passes unknown fields through)
             "data": {
                 "name": r.name, "type": r.type, "chain": r.chain,
                 "start": r.start, "finish": r.finish,
                 "duration": r.duration,
+                "realistic": r_realistic,
                 "resources": r.resource_ids.replace(";", ", "),
                 "predecessors": r.predecessor_ids.replace(";", "; "),
                 "url": r.url,
@@ -175,6 +205,8 @@ _TEMPLATE = """<!DOCTYPE html>
         <div id="detail-type" class="detail-value"></div>
         <div class="detail-label">Schedule</div>
         <div id="detail-schedule" class="detail-value"></div>
+        <div class="detail-label" id="label-estimates">Estimates</div>
+        <div id="detail-estimates" class="detail-value"></div>
         <div class="detail-label">Resources</div>
         <div id="detail-resources" class="detail-value"></div>
         <div class="detail-label">Predecessors</div>
@@ -264,6 +296,18 @@ _TEMPLATE = """<!DOCTYPE html>
         `${d.type.replace('_', ' ')} / ${d.chain}`;
       document.getElementById('detail-schedule').innerText =
         `day ${d.start} → ${d.finish} (${d.duration} working days)`;
+      const hasRealistic = d.realistic !== null && d.realistic !== undefined;
+      document.getElementById('label-estimates').style.display =
+        hasRealistic ? 'block' : 'none';
+      const estimatesBox = document.getElementById('detail-estimates');
+      estimatesBox.style.display = hasRealistic ? 'block' : 'none';
+      if (hasRealistic) {
+        const cut = d.realistic > 0
+          ? Math.round(100 * (1 - d.duration / d.realistic)) : 0;
+        estimatesBox.innerText =
+          `optimal ${d.duration}d · realistic ${d.realistic}d` +
+          (cut > 0 ? ` (${cut}% safety pooled into buffers)` : '');
+      }
       document.getElementById('detail-resources').innerText =
         d.resources || '—';
       document.getElementById('detail-preds').innerText =
@@ -286,9 +330,12 @@ _TEMPLATE = """<!DOCTYPE html>
 
 
 def render_network_html(schedule: Schedule, title="CCPM Schedule",
-                        critical_label="Critical chain") -> str:
-    """The complete standalone HTML document as a string."""
-    data = _graph_data(schedule, critical_label)
+                        critical_label="Critical chain", tasks=None) -> str:
+    """The complete standalone HTML document as a string.
+
+    `tasks` (a list of Task or a Network) enriches task nodes with their
+    realistic duration estimates in the tooltip and inspector."""
+    data = _graph_data(schedule, critical_label, tasks)
     # </ would end the inline <script> early if a name/url contained it
     payload = json.dumps(data, indent=2).replace("</", "<\\/")
     safe_title = (title.replace("&", "&amp;").replace("<", "&lt;")
@@ -298,6 +345,6 @@ def render_network_html(schedule: Schedule, title="CCPM Schedule",
 
 
 def write_network_html(schedule: Schedule, path, title="CCPM Schedule",
-                       critical_label="Critical chain"):
+                       critical_label="Critical chain", tasks=None):
     with open(path, "w", encoding="utf-8") as f:
-        f.write(render_network_html(schedule, title, critical_label))
+        f.write(render_network_html(schedule, title, critical_label, tasks))

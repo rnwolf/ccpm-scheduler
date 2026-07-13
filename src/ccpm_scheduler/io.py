@@ -107,20 +107,20 @@ def _read_csv(path):
 
 # ---------------------------------------------------------------- CSV input
 
-def load_network(tasks_path, resources_path, calendar_path=None) -> Network:
-    net = Network(has_calendar=calendar_path is not None)
-
+def _load_tasks(tasks_path):
     rows, cols = _read_csv(tasks_path)
+    warnings = []
     for legacy, current in [("predecessors", "predecessor_ids"),
                             ("resources", "resource_ids")]:
         if legacy in cols and current not in cols:
-            net.io_warnings.append(Issue(
+            warnings.append(Issue(
                 "W_LEGACY_COLUMNS", WARNING,
                 f"tasks.csv uses legacy column '{legacy}' — rename to '{current}'"))
+    tasks = []
     for t in rows:
         pred_str = _first(t, "predecessor_ids", "predecessors")
         pred_str = "" if pred_str is None else pred_str
-        net.tasks.append(Task(
+        tasks.append(Task(
             id=t["id"],
             name=t.get("name"),
             realistic_duration=parse_number(
@@ -131,9 +131,19 @@ def load_network(tasks_path, resources_path, calendar_path=None) -> Network:
             resource_ids=split_tokens(_first(t, "resource_ids", "resources") or ""),
             url=t.get("url", "") or "",
             pred_str=pred_str))
+    return tasks, warnings
 
+
+def load_tasks(tasks_path) -> list[Task]:
+    """Just the tasks from a tasks.csv — e.g. to enrich graph output with
+    the duration estimates that schedule.csv doesn't carry."""
+    return _load_tasks(tasks_path)[0]
+
+
+def load_network(tasks_path, resources_path, calendar_path=None) -> Network:
+    net = Network(has_calendar=calendar_path is not None)
+    net.tasks, net.io_warnings = _load_tasks(tasks_path)
     net.resources.extend(load_resources(resources_path))
-
     if calendar_path:
         net.calendar.extend(load_calendar(calendar_path))
     return net

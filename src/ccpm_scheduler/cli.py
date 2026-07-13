@@ -174,10 +174,11 @@ def cmd_graph(parser, args):
     from .graph import write_network_html
     try:
         schedule = io.load_schedule(args.schedule)
+        tasks = io.load_tasks(args.tasks) if args.tasks else None
     except OSError as e:
-        _fail_usage(parser, f"cannot read schedule: {e}")
+        _fail_usage(parser, f"cannot read input: {e}")
     write_network_html(schedule, args.out, title=args.title,
-                       critical_label=args.critical_label)
+                       critical_label=args.critical_label, tasks=tasks)
     if args.json:
         _emit({"ok": True, "wrote": args.out})
     else:
@@ -286,6 +287,10 @@ def build_parser():
                     "shows when, the graph shows why.")
     sp.add_argument("schedule", metavar="SCHEDULE.csv")
     sp.add_argument("out", metavar="OUT.html")
+    sp.add_argument("--tasks", metavar="TASKS.csv",
+                    help="input tasks file — adds each task's realistic "
+                         "duration estimate to the tooltip and inspector "
+                         "(schedule.csv only carries the optimal duration)")
     sp.add_argument("--title", default="CCPM Schedule")
     sp.add_argument("--critical-label", default="Critical chain",
                     help='legend label for critical nodes (e.g. "Critical '
