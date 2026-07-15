@@ -155,3 +155,46 @@ def test_cli_graph_with_tasks(tmp_path):
             "--tasks", d / "tasks.csv", "--title", "example")
     assert r.returncode == 0, r.stderr
     assert '"realistic": 10' in out.read_text()
+
+
+def test_resource_names_with_spaces():
+    """Resource lists split on ';' only — names may contain spaces (as when
+    an embedding tool passes human-readable resource names)."""
+    from ccpm_scheduler import Schedule, ScheduleRow
+    schedule = Schedule(rows=[
+        ScheduleRow(id="T1", name="Task one", type="task", chain="none",
+                    start=0, finish=2, duration=2,
+                    resource_ids="Resource A;Resource B"),
+        ScheduleRow(id="T2", name="Task two", type="task", chain="none",
+                    start=2, finish=4, duration=2, resource_ids="Resource A",
+                    predecessor_ids="T1"),
+    ])
+    graph = embedded_graph(render_network_html(schedule))
+    assert graph["resources"] == ["Resource A", "Resource B"]
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    assert by_id["T1"]["data"]["resource_list"] == ["Resource A", "Resource B"]
+    assert by_id["T1"]["data"]["resources"] == "Resource A, Resource B"
+
+
+def test_custom_chain_labels():
+    """Any chain label (not just feeding-<n>) gets a palette color and its
+    verbatim name in the legend; feeding-<n> keeps the friendly label."""
+    from ccpm_scheduler import Schedule, ScheduleRow
+
+    def row(rid, chain, **kw):
+        return ScheduleRow(id=rid, name=rid, type="task", chain=chain,
+                           start=0, finish=1, duration=1, **kw)
+
+    schedule = Schedule(rows=[row("A", "critical"),
+                              row("B", "Integration stream"),
+                              row("C", "feeding-2"),
+                              row("D", "none")])
+    graph = embedded_graph(render_network_html(schedule))
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    grey = by_id["D"]["color"]["background"]
+    assert by_id["B"]["color"]["background"] != grey        # palette, not grey
+    assert by_id["B"]["color"]["background"] != \
+        by_id["C"]["color"]["background"]                   # distinct colors
+    labels = {l["label"] for l in graph["legend"]}
+    assert "Integration stream" in labels
+    assert "Feeding chain 2" in labels

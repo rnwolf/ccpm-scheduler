@@ -24,9 +24,12 @@ CLI:          ccpm-scheduler graph schedule.csv project-network.html
 from __future__ import annotations
 
 import json
+import re
 
 from . import io
 from .model import Schedule, as_int
+
+_FEEDING_LABEL_RE = re.compile(r"^feeding-(\d+)$")
 
 CRITICAL_COLOR = "#b22222"          # firebrick, as on the Gantt
 OTHER_COLOR = "#9e9e9e"
@@ -36,6 +39,13 @@ FB_COLOR = "#f0e68c"                # khaki
 # excluded - reserved for the critical chain)
 FEEDING_PALETTE = ["#2ca02c", "#1f77b4", "#9467bd", "#8c564b",
                    "#e377c2", "#bcbd22", "#17becf", "#ff7f0e"]
+
+
+def _split_resources(s):
+    """Split a resource list on ';'/',' only — unlike dependency tokens,
+    resource names may legitimately contain spaces ("Resource A")."""
+    return [x.strip() for x in (s or "").replace(",", ";").split(";")
+            if x.strip()]
 
 
 def _node_style(row, feed_color):
@@ -72,15 +82,18 @@ def _estimates(tasks):
 def _graph_data(schedule: Schedule, critical_label, tasks=None):
     rows = schedule.rows
     realistic = _estimates(tasks)
+    # any chain label other than critical/none gets a palette color — CCPM
+    # schedules emit feeding-<n>, but embedding tools (e.g. our-planner) may
+    # carry their own chain names
     feeding_chains = sorted({r.chain for r in rows
-                             if r.chain.startswith("feeding")})
+                             if r.chain not in ("critical", "none")})
     feed_color = {c: FEEDING_PALETTE[i % len(FEEDING_PALETTE)]
                   for i, c in enumerate(feeding_chains)}
 
     ids = {r.id for r in rows}
     nodes, edges = [], []
     all_resources = sorted({res for r in rows
-                            for res in io.split_tokens(r.resource_ids)})
+                            for res in _split_resources(r.resource_ids)})
 
     for r in rows:
         background, border, dashed_border, shape = _node_style(r, feed_color)
@@ -114,8 +127,8 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
                 "start": r.start, "finish": r.finish,
                 "duration": r.duration,
                 "realistic": r_realistic,
-                "resources": r.resource_ids.replace(";", ", "),
-                "resource_list": io.split_tokens(r.resource_ids),
+                "resources": ", ".join(_split_resources(r.resource_ids)),
+                "resource_list": _split_resources(r.resource_ids),
                 "predecessors": r.predecessor_ids.replace(";", "; "),
                 "url": r.url,
             },
@@ -140,7 +153,9 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
     if any(r.chain == "critical" and r.type == "task" for r in rows):
         legend.append({"color": CRITICAL_COLOR, "label": critical_label})
     for c in feeding_chains:
-        legend.append({"color": feed_color[c], "label": f"Feeding chain {c.split('-', 1)[1]}"})
+        m = _FEEDING_LABEL_RE.match(c)
+        legend.append({"color": feed_color[c],
+                       "label": f"Feeding chain {m.group(1)}" if m else c})
     if any(r.type == "task" and r.chain == "none" for r in rows):
         legend.append({"color": OTHER_COLOR, "label": "Other task"})
     if any(r.type == "project_buffer" for r in rows):
