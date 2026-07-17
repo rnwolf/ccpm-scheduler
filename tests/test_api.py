@@ -202,14 +202,77 @@ def test_legacy_columns_warn(tmp_path):
     assert validate_network(net).ok
 
 
-def test_unschedulable_raises_ccpm_error():
+def test_unschedulable_raises_named_ccpm_error():
+    # Genuinely infeasible: base capacity 0 and no window ever grants any.
+    # The error must name the task and the blocking resource (this shape
+    # used to hang the forward pass, searching for a window forever).
+    net = network_from_json({
+        "tasks": [{"id": "A", "name": "Alpha", "optimal_duration": 5,
+                   "resources": ["r1"]}],
+        "resources": [{"id": "r1", "capacity": 0}],
+    })
+    with pytest.raises(CcpmError, match=r"task A .*'Alpha'.*r1"):
+        build_schedule(net)
+
+
+def test_finite_outage_schedules_after_it():
+    # A finite blackout window is a wait, not infeasibility: the task takes
+    # the first feasible execution window after the outage ends. (This
+    # exact shape used to raise 'no feasible schedule found' because the
+    # deadline search was capped at sum(durations).)
     net = network_from_json({
         "tasks": [{"id": "A", "optimal_duration": 5, "resources": ["r1"]}],
         "resources": [{"id": "r1"}],
         "calendar": [{"resource_id": "r1", "from": 0, "to": 1000, "capacity": 0}],
     })
-    with pytest.raises(CcpmError):
-        build_schedule(net)
+    result = build_schedule(net)
+    row = {r.id: r for r in result.schedule.rows}["A"]
+    assert (row.start, row.finish) == (1000, 1005)
+
+
+def test_calendar_outage_extends_horizon_save1228_shape():
+    # Regression for our-planner save-1228.json: 3-task chain, 16 days of
+    # work, resource 1 on leave days 5-13. The first task's only feasible
+    # window starts at day 13, so the true makespan (29) exceeds the old
+    # sum(durations) cap (16) and the build reported 'no feasible
+    # schedule'. The horizon must follow the calendar.
+    net = network_from_json({
+        "tasks": [
+            {"id": "5", "name": "ONe", "optimal_duration": 7,
+             "realistic_duration": 12, "resources": ["1"]},
+            {"id": "6", "name": "two", "optimal_duration": 3,
+             "realistic_duration": 9, "resources": ["2"],
+             "predecessors": [{"id": "5", "type": "FS", "lag": 0}]},
+            {"id": "7", "name": "three", "optimal_duration": 6,
+             "realistic_duration": 9, "resources": ["3"],
+             "predecessors": [{"id": "6", "type": "FS", "lag": 0}]},
+        ],
+        "resources": [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+        "calendar": [{"resource_id": "1", "from": 5, "to": 13, "capacity": 0}],
+    })
+    result = build_schedule(net)
+    rows = {r.id: r for r in result.schedule.rows}
+    assert rows["5"].start == 13  # first feasible window is after the leave
+    assert rows["7"].finish == 29
+    assert result.stats.deadline == 29
+    assert check_schedule(result.schedule, net).ok
+
+
+def test_positive_lag_extends_horizon():
+    # Same horizon bug without any calendar: an FS lag pushes the makespan
+    # (9) past sum(durations) (4), which used to be the search cap.
+    net = network_from_json({
+        "tasks": [
+            {"id": "A", "optimal_duration": 2, "resources": ["r1"]},
+            {"id": "B", "optimal_duration": 2, "resources": ["r2"],
+             "predecessors": [{"id": "A", "type": "FS", "lag": 5}]},
+        ],
+        "resources": [{"id": "r1"}, {"id": "r2"}],
+    })
+    result = build_schedule(net)
+    rows = {r.id: r for r in result.schedule.rows}
+    assert rows["B"].start - rows["A"].finish >= 5
+    assert result.stats.deadline == 9
 
 
 def test_report_json_shape():

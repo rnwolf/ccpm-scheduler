@@ -13,7 +13,9 @@ durations, every task resourced) and reports input problems only crudely.
 
 Steps: normalize (optimal durations = ceil(realistic/2) unless given) ->
 ALAP baseline (calendar-aware) -> resource leveling (earlier-only; if
-infeasible under deadline T, retry with T+1) -> critical chain (resource
+infeasible under deadline T, retry with T+1, up to a serialized
+calendar-aware horizon so outages and link lags can push the deadline
+past the sum of durations) -> critical chain (resource
 links + calendar-gap continuation) -> feeding chains -> buffers (sized per
 --buffer-method: cap / hchain / rsem, default cap - see docs/buffer-sizing.md;
 a feeding buffer bridges the gap to its anchor; feeding-chain shifts drag
@@ -99,6 +101,10 @@ class Net:
         except ValueError as e:
             raise CcpmError(str(e)) from None
         self.has_calendar = network.has_calendar
+        # last day any calendar window touches; capacity is flat (= base)
+        # from here on, which bounds every window search
+        self.cal_end = max((hi for ws in self.cal.values()
+                            for _, hi, _ in ws), default=0)
         self.succ = defaultdict(list)   # tid -> [(sid, type, lag)]
         for tid, t in self.T.items():
             for pid, lt, lag in t["links"]:
@@ -139,6 +145,29 @@ class Net:
                    for r in self.T[tid]["res"]
                    for d in range(start, start + self.T[tid]["dur"]))
 
+    def earliest_window(self, tid, lo):
+        """Earliest start >= lo whose whole span passes cal_ok, or None if
+        no such start exists at ANY horizon. The search is complete: beyond
+        the last calendar window every resource sits at its base capacity,
+        so feasibility is constant from cal_end on - one probe there
+        decides the entire tail."""
+        s = max(lo, 0)
+        end = max(self.cal_end, s)
+        while s <= end:
+            if self.cal_ok(tid, s):
+                return s
+            s += 1
+        return None
+
+    def no_window_msg(self, tid):
+        """Human-readable diagnosis for a task with no feasible window."""
+        t = self.T[tid]
+        blocked = ([r for r in t["res"] if self.caps.get(r, 1) < 1]
+                   or t["res"])
+        return (f"task {tid} ({t['name']!r}, {t['dur']}d) has no feasible "
+                f"calendar window: resource(s) {', '.join(blocked)} never "
+                f"have capacity for its full duration")
+
 
 def try_schedule(net, T):
     """ALAP + leveling under deadline T. Returns start map or None."""
@@ -154,8 +183,9 @@ def try_schedule(net, T):
             for p, lt, lag in net.T[i]["links"]:
                 pa = es[p] + (dur[p] if lt in ("FS", "FF") else 0) + lag
                 lo = max(lo, pa - (dur[i] if lt in ("FF", "SF") else 0))
-            while not net.cal_ok(i, lo):
-                lo += 1
+            lo = net.earliest_window(i, lo)
+            if lo is None:  # permanently blocked - no deadline can help
+                raise CcpmError(net.no_window_msg(i))
             if lo > es[i]:
                 es[i], changed = lo, True
         if not changed:
@@ -237,6 +267,40 @@ def try_schedule(net, T):
     return None
 
 
+def serial_horizon(net, ids, dur):
+    """Deadline-search cap: place the tasks one at a time in topological
+    order, each in its earliest calendar-feasible window after the previous
+    one finishes. That serial schedule needs no leveling, so its finish is
+    always a sufficient deadline. With no calendar outages it degenerates
+    to sum(dur) - the previous cap - so networks that scheduled before
+    still find the same first-feasible deadline. Positive link lags are
+    added on top: serialization satisfies the links' ordering but not
+    their lags, and a lag can push work past any serial finish.
+
+    Raises CcpmError, naming the task, when some task has no feasible
+    window at any horizon (a resource that never has capacity for it)."""
+    order, placed, pending = [], set(), sorted(ids)
+    while pending:
+        for i in pending:
+            if all(p in placed for p, _, _ in net.T[i]["links"]):
+                order.append(i)
+                placed.add(i)
+                pending.remove(i)
+                break
+        else:  # cycle - the validator's job to report; any order still bounds
+            order.extend(pending)
+            break
+    t = 0
+    for i in order:
+        s = net.earliest_window(i, t)
+        if s is None:
+            raise CcpmError(net.no_window_msg(i))
+        t = s + dur[i]
+    lags = sum(max(lag, 0)
+               for i in ids for _, _, lag in net.T[i]["links"])
+    return t + lags
+
+
 def build_schedule(network: Network, title="CCPM schedule",
                    buffer_method=None) -> BuildResult:
     """Build the CCPM schedule for a (validated) network.
@@ -258,7 +322,7 @@ def build_schedule(network: Network, title="CCPM schedule",
     delta = {i: net.T[i]["delta"] for i in ids}
     T0 = 0
     start = None
-    for T in range(sum(dur.values()) + 1):
+    for T in range(serial_horizon(net, ids, dur) + 1):
         start = try_schedule(net, T)
         if start is not None:
             T0 = T
