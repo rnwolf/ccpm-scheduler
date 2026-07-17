@@ -125,7 +125,10 @@ Durations are working days; the schedule uses integer day offsets from day 0.
   `duration` — filter by chain to audit how much safety left the tasks
   versus what landed in the chain's buffer
 - `summary.md` — critical chain, project duration, buffer sizes, promised
-  completion date (= end of the project buffer)
+  completion date (= end of the project buffer). Buffer sizing currently uses
+  the 50%-of-chain rule; the supported methods (CAP / HCHAIN / RSEM), their
+  trade-offs, and how mixed single-/two-point estimates are handled are
+  documented in [docs/buffer-sizing.md](docs/buffer-sizing.md)
 - `gantt.png` — critical chain, feeding chains, buffers, dependency arrows,
   and a resource-utilization panel on the same time axis
 - `project-network.html` (via `graph`) — standalone interactive dependency

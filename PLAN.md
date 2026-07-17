@@ -140,6 +140,45 @@ Fractional capacity/allocation support in the leveler: float demand, revisited
 tie-break rules, determinism re-verified with new golden tests. Own change,
 not smuggled into packaging.
 
+## Phase 6 — Selectable buffer-sizing methods (agreed 2026-07-16)
+
+Today buffer sizing is hard-coded to the 50%-of-chain rule
+(`ceil(0.5 * sum(dur))` for both the project buffer and every feeding buffer
+in `build.py`). That rule treats every task as equally uncertain, which teams
+new to CCPM push back on — the sizing formula becomes an adoption obstacle
+rather than a detail. The methods, formulas, pros/cons, and mixed-estimate
+handling are documented in `docs/buffer-sizing.md` (written first,
+2026-07-16); this phase implements selection:
+
+- Three methods, one selection knob used by *both* buffer types within a
+  schedule:
+  - `cap` — Cut & Paste: buffer = Σ (realistic − optimal) over the protected
+    chain. **New default.**
+  - `hchain` — 50% of chain: buffer = ⌈0.5 × Σ optimal⌉ (current behavior,
+    kept selectable).
+  - `rsem` — Root-Squared Error: buffer = ⌈√(Σ (realistic − optimal)²)⌉.
+- Per-task normalization mostly exists (`Task.duration` derives
+  optimal = ⌈realistic/2⌉); add the symmetric case (realistic missing →
+  2 × optimal) for Δ computation.
+- CLI: `build --buffer-method {cap,hchain,rsem}` (default `cap`); library:
+  `build_schedule(..., buffer_method="cap")`; JSON exchange: top-level
+  `buffer_method` key so embedding tools (our-planner) can pass it through
+  `network_from_json`.
+- `summary.md` records the method used, and reports how many tasks in each
+  protected chain had *derived* (not estimated) Δs — CAP/RSEM degrade toward
+  mechanical 50% assumptions when most estimates are single-point, and the
+  user should see that.
+- Changing the default from hchain to cap is a **breaking output change**:
+  golden tests re-baselined; add per-method goldens for one reference
+  project. `check_schedule` must accept any method's output (it verifies
+  structure, not sizes — confirm no size assumptions lurk).
+- Downstream (tracked in their own repos): our-planner sets the method per
+  project (`CCPM Method`, its planning.md Stage 20) and passes it through
+  both round-trip flows; the ccpm-single-project skill asks the user which
+  method to use and, when the user is unsure, gathers two-point estimates
+  and uses CAP. Buffers remain manually resizable in our-planner before
+  execution mode.
+
 ## Cross-cutting
 
 - CI: golden tests + CLI contract tests (exit codes, `--json` shapes).
