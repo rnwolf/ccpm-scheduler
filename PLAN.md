@@ -140,7 +140,18 @@ Fractional capacity/allocation support in the leveler: float demand, revisited
 tie-break rules, determinism re-verified with new golden tests. Own change,
 not smuggled into packaging.
 
-## Phase 6 — Selectable buffer-sizing methods (agreed 2026-07-16)
+## Phase 6 — Selectable buffer-sizing methods (agreed 2026-07-16) — done
+
+**Done (2026-07-17, v0.9.0).** Implemented as planned below, plus two refinements found during
+the build: (1) `buffer_size()` never returns less than 1 day (CAP/RSEM can compute 0 when every
+Δ is 0, and a zero-length buffer is rejected by the checker); (2) when a feeding chain cannot
+shift far enough to fit its full buffer, the summary's size column shows `N (method wanted M)` —
+partial fits happen more often with CAP's larger buffers and used to be invisible. Verified:
+`--buffer-method hchain` reproduces every pre-Phase-6 golden `schedule.csv` byte-identically;
+new goldens for the cap default (all 5 reference projects) and per-method goldens
+(`example-hchain`, `example-rsem`); unit tests pin the docs' worked examples (mixed 4-task
+chain: cap 29 / hchain 16 / rsem 16), the JSON key + override resolution, and the
+optimal-only Δ derivation. 77 tests passing.
 
 Today buffer sizing is hard-coded to the 50%-of-chain rule
 (`ceil(0.5 * sum(dur))` for both the project buffer and every feeding buffer

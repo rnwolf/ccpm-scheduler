@@ -35,7 +35,7 @@ import sys
 from . import __version__, io
 from .build import build_schedule
 from .check import check_schedule
-from .model import CcpmError
+from .model import CcpmError, BUFFER_METHODS
 from .schema import SCHEMAS
 from .validate import validate_network, report_lines
 
@@ -106,7 +106,8 @@ def cmd_build(parser, args):
             print("\n".join(lines))
         return 1
     try:
-        result = build_schedule(net, args.title)
+        result = build_schedule(net, args.title,
+                                buffer_method=args.buffer_method)
     except CcpmError as e:
         if args.json:
             _emit({"ok": False, "error": {"code": "E_UNSCHEDULABLE",
@@ -240,6 +241,10 @@ def build_parser():
                          "(default: current directory)")
     sp.add_argument("--title", default="CCPM schedule",
                     help='project title used in outputs (default: "CCPM schedule")')
+    sp.add_argument("--buffer-method", choices=BUFFER_METHODS, default=None,
+                    help="buffer sizing method (default: cap; a JSON input's "
+                         "own buffer_method key is honored when this flag is "
+                         "omitted) — see docs/buffer-sizing.md")
     sp.add_argument("--json", action="store_true",
                     help="print stats, file paths, and the full schedule as JSON")
     sp.set_defaults(func=cmd_build)

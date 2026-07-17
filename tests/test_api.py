@@ -53,8 +53,76 @@ def test_build_stats():
     result = build_schedule(load("example"), title="example")
     s = result.stats
     assert s.critical_chain == ["A", "B", "D", "F"]
-    assert (s.deadline, s.project_buffer, s.promise_day) == (30, 15, 45)
+    # default method is cap: PB = Σ safety removed = 30 on this
+    # single-point network (docs/buffer-sizing.md)
+    assert (s.deadline, s.project_buffer, s.promise_day) == (30, 30, 60)
+    assert s.buffer_method == "cap"
     assert s.status_line("example").startswith("example: T=30, CC=A->B->D->F")
+
+
+def test_build_stats_per_method():
+    """The docs' worked numbers for the example network: CC Δs are
+    5/10/10/5 (all derived), so cap = 30, hchain = ⌈0.5×30⌉ = 15,
+    rsem = ⌈√250⌉ = 16."""
+    expected = {"cap": (30, 60), "hchain": (15, 45), "rsem": (16, 46)}
+    for method, (pb, promise) in expected.items():
+        s = build_schedule(load("example"), title="example",
+                           buffer_method=method).stats
+        assert (s.project_buffer, s.promise_day) == (pb, promise), method
+        assert s.buffer_method == method
+
+
+def test_unknown_buffer_method_raises():
+    with pytest.raises(CcpmError, match="unknown buffer method"):
+        build_schedule(load("example"), buffer_method="fancy")
+
+
+def test_buffer_method_json_key_and_override():
+    """The JSON exchange's buffer_method key drives the build; an explicit
+    build_schedule argument overrides it; network_to_json round-trips it."""
+    data = network_to_json(load("example"))
+    data["buffer_method"] = "hchain"
+    net = network_from_json(data)
+    assert net.buffer_method == "hchain"
+    assert network_to_json(net)["buffer_method"] == "hchain"
+    assert build_schedule(net).stats.project_buffer == 15        # json key
+    assert build_schedule(net, buffer_method="cap").stats \
+        .project_buffer == 30                                    # override
+
+
+def test_mixed_estimates_buffer_math():
+    """Two-point tasks contribute their stated Δ, single-point tasks a
+    derived Δ — the mixed 4-task chain from docs/buffer-sizing.md:
+    Δ = 4, 10, 5, 10; optimal chain = 31 → cap 29, hchain 16, rsem 16."""
+    def net():
+        return network_from_json({
+            "tasks": [
+                {"id": "A", "realistic_duration": 10, "optimal_duration": 6,
+                 "resources": ["r"]},
+                {"id": "B", "realistic_duration": 20, "optimal_duration": 10,
+                 "predecessors": "A", "resources": ["r"]},
+                {"id": "C", "realistic_duration": 10,
+                 "predecessors": "B", "resources": ["r"]},
+                {"id": "D", "realistic_duration": 20,
+                 "predecessors": "C", "resources": ["r"]},
+            ],
+            "resources": [{"id": "r"}],
+        })
+    for method, pb in {"cap": 29, "hchain": 16, "rsem": 16}.items():
+        stats = build_schedule(net(), buffer_method=method).stats
+        assert stats.critical_chain_length == 31
+        assert stats.project_buffer == pb, method
+
+
+def test_optimal_only_task_delta():
+    """A task with only an optimal estimate gets realistic = 2 × optimal
+    derived, i.e. Δ = optimal (docs/buffer-sizing.md normalization)."""
+    net = network_from_json({
+        "tasks": [{"id": "A", "optimal_duration": 8, "resources": ["r"]}],
+        "resources": [{"id": "r"}],
+    })
+    assert build_schedule(net, buffer_method="cap").stats.project_buffer == 8
+    assert build_schedule(net, buffer_method="rsem").stats.project_buffer == 8
 
 
 def test_validation_codes_bad_network():

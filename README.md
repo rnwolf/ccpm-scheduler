@@ -31,7 +31,7 @@ same input always produces byte-identical output.
 ```bash
 ccpm-scheduler validate tasks.csv resources.csv calendar.csv
 ccpm-scheduler build tasks.csv resources.csv --calendar calendar.csv \
-    --out-dir plan --title "Website relaunch"
+    --out-dir plan --title "Website relaunch" --buffer-method cap
 ccpm-scheduler check plan/schedule.csv tasks.csv resources.csv calendar.csv
 ccpm-scheduler plot plan/schedule.csv plan/gantt.png --resources resources.csv
 ccpm-scheduler graph plan/schedule.csv plan/project-network.html \
@@ -59,6 +59,12 @@ The network input is either CSV files or a single JSON document (a path, or
 ```bash
 echo '{"tasks": [...], "resources": [...]}' | ccpm-scheduler build - --json
 ```
+
+`build` sizes buffers per `--buffer-method`: `cap` (Cut & Paste — the
+default), `hchain` (50% of chain, the pre-0.9 behavior), or `rsem`
+(root-squared error); a JSON input may carry its own `buffer_method` key,
+which the flag overrides. Formulas, trade-offs, and mixed-estimate handling:
+[docs/buffer-sizing.md](docs/buffer-sizing.md).
 
 `build` validates first: on a broken network you get the same coded issue
 report as `validate` (exit 1) and no files. `--json` reports carry stable
@@ -125,8 +131,9 @@ Durations are working days; the schedule uses integer day offsets from day 0.
   `duration` — filter by chain to audit how much safety left the tasks
   versus what landed in the chain's buffer
 - `summary.md` — critical chain, project duration, buffer sizes, promised
-  completion date (= end of the project buffer). Buffer sizing currently uses
-  the 50%-of-chain rule; the supported methods (CAP / HCHAIN / RSEM), their
+  completion date (= end of the project buffer), the buffer-sizing method
+  used, and how many tasks in each protected chain had derived
+  (single-point) safety estimates. The methods (CAP / HCHAIN / RSEM), their
   trade-offs, and how mixed single-/two-point estimates are handled are
   documented in [docs/buffer-sizing.md](docs/buffer-sizing.md)
 - `gantt.png` — critical chain, feeding chains, buffers, dependency arrows,

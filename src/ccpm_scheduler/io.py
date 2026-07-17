@@ -21,7 +21,8 @@ JSON exchange format (network_from_json / network_to_json):
          "url": ""}
       ],
       "resources": [{"id": "blue", "name": "Blue", "capacity": 1, "url": ""}],
-      "calendar":  [{"resource_id": "green", "from": 2, "to": 4, "capacity": 0}]
+      "calendar":  [{"resource_id": "green", "from": 2, "to": 4, "capacity": 0}],
+      "buffer_method": "cap"    # optional: cap | hchain | rsem
     }
 
 `predecessors` accepts the string notation, a list of tokens, or a list of
@@ -171,6 +172,10 @@ def network_from_json(data) -> Network:
     if isinstance(data, str):
         data = json.loads(data)
     net = Network(has_calendar="calendar" in data)
+    # buffer-sizing method (docs/buffer-sizing.md); validated by build, not
+    # here - loading stays lenient
+    if data.get("buffer_method"):
+        net.buffer_method = str(data["buffer_method"])
 
     for t in data.get("tasks", []):
         tid = str(t["id"])
@@ -234,6 +239,8 @@ def network_from_json(data) -> Network:
 
 def network_to_json(net: Network) -> dict:
     out = {"tasks": [], "resources": []}
+    if net.buffer_method:
+        out["buffer_method"] = net.buffer_method
     for t in net.tasks:
         d = {"id": t.id, "name": t.name,
              "realistic_duration": t.realistic_duration,

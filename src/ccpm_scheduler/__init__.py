@@ -45,6 +45,7 @@ from .model import (                                        # noqa: F401
     Issue, ValidationReport, Schedule, ScheduleRow,
     BuildResult, BuildStats, SCHEDULE_COLUMNS,
     TYPE_TASK, TYPE_PROJECT_BUFFER, TYPE_FEEDING_BUFFER,
+    BUFFER_METHODS, DEFAULT_BUFFER_METHOD,
 )
 from .io import (                                           # noqa: F401
     load_network, load_tasks, load_resources, load_calendar, load_schedule,
@@ -61,6 +62,7 @@ __all__ = [
     "Issue", "ValidationReport", "Schedule", "ScheduleRow",
     "BuildResult", "BuildStats", "SCHEDULE_COLUMNS",
     "TYPE_TASK", "TYPE_PROJECT_BUFFER", "TYPE_FEEDING_BUFFER",
+    "BUFFER_METHODS", "DEFAULT_BUFFER_METHOD",
     "load_network", "load_tasks", "load_resources", "load_calendar", "load_schedule",
     "network_from_json", "network_to_json", "schedule_from_json",
     "write_schedule_csv", "write_build_outputs",

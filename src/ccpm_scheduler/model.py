@@ -121,6 +121,13 @@ class CalendarWindow:
     capacity: object
 
 
+# Buffer sizing methods (docs/buffer-sizing.md): cap = Cut & Paste
+# (buffer = Σ safety removed), hchain = 50% of chain length, rsem =
+# root-squared error. One method sizes both buffer types in a schedule.
+BUFFER_METHODS = ("cap", "hchain", "rsem")
+DEFAULT_BUFFER_METHOD = "cap"
+
+
 @dataclass
 class Network:
     tasks: list[Task] = field(default_factory=list)
@@ -129,6 +136,9 @@ class Network:
     # True when a calendar was explicitly supplied (even an empty one) —
     # the build summary mentions calendar handling only in that case
     has_calendar: bool = False
+    # buffer-sizing method carried in the JSON exchange format so embedding
+    # tools can pass it through; None = builder default (or CLI flag) applies
+    buffer_method: str | None = None
     # non-semantic warnings collected while loading (e.g. legacy column names)
     io_warnings: list["Issue"] = field(default_factory=list)
 
@@ -246,12 +256,14 @@ class BuildStats:
     buffered: int
     unprotected: int
     finish_milestone: bool
+    buffer_method: str = DEFAULT_BUFFER_METHOD
 
     def status_line(self, title: str) -> str:
         return (f"{title}: T={self.deadline}, "
                 f"CC={'->'.join(self.critical_chain)} "
                 f"({self.critical_chain_length}d), "
-                f"PB={self.project_buffer}, promise=day {self.promise_day}, "
+                f"PB={self.project_buffer} ({self.buffer_method}), "
+                f"promise=day {self.promise_day}, "
                 f"{self.merges} merge(s), {self.buffered} buffered, "
                 f"{self.unprotected} unprotected"
                 + (", FINISH milestone" if self.finish_milestone else ""))

@@ -1,9 +1,10 @@
 """Build a CCPM schedule — the deterministic reference implementation.
 The same input always produces the same schedule.
 
-Library API:  build_schedule(network, title=...) -> BuildResult
+Library API:  build_schedule(network, title=..., buffer_method=...) -> BuildResult
 CLI:          python -m ccpm_scheduler.build tasks.csv resources.csv
                   [--calendar calendar.csv] [--out-dir DIR] [--title "My project"]
+                  [--buffer-method cap|hchain|rsem]
 
 The CLI writes DIR/schedule.csv and DIR/summary.md (DIR defaults to the
 current directory). Validate the network first (ccpm_scheduler.validate) —
@@ -13,7 +14,8 @@ durations, every task resourced) and reports input problems only crudely.
 Steps: normalize (optimal durations = ceil(realistic/2) unless given) ->
 ALAP baseline (calendar-aware) -> resource leveling (earlier-only; if
 infeasible under deadline T, retry with T+1) -> critical chain (resource
-links + calendar-gap continuation) -> feeding chains -> buffers (50% rule;
+links + calendar-gap continuation) -> feeding chains -> buffers (sized per
+--buffer-method: cap / hchain / rsem, default cap - see docs/buffer-sizing.md;
 a feeding buffer bridges the gap to its anchor; feeding-chain shifts drag
 non-critical external predecessors; zero-length buffers are omitted and the
 chain flagged) -> merges: EVERY edge from non-critical work into the
@@ -32,9 +34,29 @@ from collections import defaultdict
 
 from . import io
 from .model import (Network, CcpmError, Schedule, ScheduleRow,
-                    BuildResult, BuildStats, as_int)
+                    BuildResult, BuildStats, as_int,
+                    BUFFER_METHODS, DEFAULT_BUFFER_METHOD)
 
 LINK_RE = io.INPUT_LINK_RE
+
+BUFFER_METHOD_LABELS = {
+    "cap": "CAP (Cut & Paste: buffer = Σ safety removed from the chain)",
+    "hchain": "HCHAIN (50% of chain length)",
+    "rsem": "RSEM (root-squared error: buffer = √Σ safety²)",
+}
+
+
+def buffer_size(method, members, dur, delta):
+    """Size one buffer over its protected chain — see docs/buffer-sizing.md.
+    Never returns less than 1: a zero-length buffer protects nothing (the
+    checker rejects zero-length buffer rows)."""
+    if method == "hchain":
+        size = math.ceil(0.5 * sum(dur[i] for i in members))
+    elif method == "rsem":
+        size = math.ceil(math.sqrt(sum(delta[i] ** 2 for i in members)))
+    else:  # cap
+        size = sum(delta[i] for i in members)
+    return max(size, 1)
 
 
 class Net:
@@ -51,8 +73,16 @@ class Net:
                              if t.realistic_duration not in (None, "") else None)
             except ValueError:
                 realistic = None
+            # Δ = per-task safety, the input to the cap/rsem buffer methods.
+            # realistic missing -> derived as 2 × optimal, so Δ = dur.
+            # "stated" marks a genuine two-point estimate; a derived Δ is a
+            # mechanical 50% assumption (reported in the summary).
+            delta = max(realistic - dur, 0) if realistic is not None else dur
+            stated = (realistic is not None
+                      and t.optimal_duration not in (None, ""))
             self.T[t.id] = dict(
                 name=t.name, dur=dur, realistic=realistic,
+                delta=delta, stated=stated,
                 links=[(l.pred_id, l.type, l.lag) for l in t.links],
                 predstr=t.predecessor_notation(),
                 res=list(t.resource_ids),
@@ -207,15 +237,25 @@ def try_schedule(net, T):
     return None
 
 
-def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
+def build_schedule(network: Network, title="CCPM schedule",
+                   buffer_method=None) -> BuildResult:
     """Build the CCPM schedule for a (validated) network.
+
+    `buffer_method` sizes both buffer types: "cap" (default), "hchain", or
+    "rsem" — see docs/buffer-sizing.md. Resolution: explicit argument, else
+    the network's own buffer_method (JSON exchange key), else "cap".
 
     Returns the schedule rows, the summary markdown, and build statistics.
     Raises CcpmError when the network is unschedulable or malformed.
     """
+    method = buffer_method or network.buffer_method or DEFAULT_BUFFER_METHOD
+    if method not in BUFFER_METHODS:
+        raise CcpmError(f"unknown buffer method {method!r} "
+                        f"(choose from {', '.join(BUFFER_METHODS)})")
     net = Net(network)
     ids = list(net.T)
     dur = {i: net.T[i]["dur"] for i in ids}
+    delta = {i: net.T[i]["delta"] for i in ids}
     T0 = 0
     start = None
     for T in range(sum(dur.values()) + 1):
@@ -308,7 +348,7 @@ def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
 
     # ---- buffers ----
     last_cc_fin = max(fin[i] for i in cc)
-    pb_size = math.ceil(0.5 * sum(dur[i] for i in cc))
+    pb_size = buffer_size(method, cc, dur, delta)
     for ch in chains:
         ch["anchor"] = start[ch["join"]] if ch["join"] else last_cc_fin
     chains.sort(key=lambda c: (c["anchor"], c["tail"]))
@@ -372,7 +412,7 @@ def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
 
     for ch in ordered:
         members = ch["tasks"]
-        size = math.ceil(0.5 * sum(dur[i] for i in members))
+        size = buffer_size(method, members, dur, delta)
         ch["size"] = size
         chain_fin = max(fin[i] for i in members)
         want = chain_fin - (ch["anchor"] - size)
@@ -418,7 +458,7 @@ def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
             if (x, j) in covered:
                 continue
             closure = sorted(back_closure(x))
-            size = math.ceil(0.5 * sum(dur[i] for i in closure))
+            size = buffer_size(method, closure, dur, delta)
             want = fin[x] - (start[j] - size)
             for d in range(max(want, 0), 0, -1):
                 new = try_shift(closure, d)
@@ -492,19 +532,37 @@ def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
         n = f"{i} {net.T[i]['name']}"
         return f"[{n}]({net.T[i]['url']})" if net.T[i]["url"] else n
     promise = last_cc_fin + pb_size
+
+    def derived_count(members):
+        """Tasks whose Δ is a mechanical 50% assumption, not an estimate."""
+        return sum(1 for m in members if not net.T[m]["stated"])
+
+    cc_derived = derived_count(cc)
     L = [f"# {title} — CCPM schedule", "",
          f"- **Critical chain**: {' → '.join(link(i) for i in cc)}",
          f"- **Critical chain length**: {sum(dur[i] for i in cc)} working days"
          f" (work finishes day {last_cc_fin})",
-         f"- **Project buffer**: {pb_size} days → **promised completion: day {promise}**", ""]
+         f"- **Project buffer**: {pb_size} days → **promised completion: day {promise}**",
+         f"- **Buffer sizing**: {BUFFER_METHOD_LABELS[method]}"
+         + (f" — {cc_derived} of {len(cc)} critical-chain tasks have "
+            f"derived (single-point) safety estimates" if cc_derived else ""),
+         ""]
     if buffered:
-        L.append("| Feeding buffer | Protects | Size (days) | Merges into |")
-        L.append("|---|---|---|---|")
+        L.append("| Feeding buffer | Protects | Size (days) "
+                 "| Derived estimates | Merges into |")
+        L.append("|---|---|---|---|---|")
         for mg in buffered:
             f0 = fin[mg["attach"]]
             anchor = link(mg["join"]) if mg["join"] else "the Finish milestone"
+            got = mg["anchor"] - f0
+            # the chain couldn't shift far enough to fit the full buffer -
+            # the achieved gap is all the protection this merge has
+            size_txt = (f"{got} (method wanted {mg['size']})"
+                        if got < mg["size"] else f"{got}")
             L.append(f"| {mg['id']} | {' → '.join(link(m) for m in mg['tasks'])} "
-                     f"| {mg['anchor'] - f0} | start of {anchor} |")
+                     f"| {size_txt} "
+                     f"| {derived_count(mg['tasks'])} of {len(mg['tasks'])} "
+                     f"| start of {anchor} |")
         L.append("")
     for mg in unprotected:
         where = link(mg["join"]) if mg["join"] else "the project end"
@@ -527,15 +585,17 @@ def build_schedule(network: Network, title="CCPM schedule") -> BuildResult:
                        project_buffer=pb_size, promise_day=promise,
                        merges=len(merges), buffered=len(buffered),
                        unprotected=len(unprotected),
-                       finish_milestone=finish_needed)
+                       finish_milestone=finish_needed,
+                       buffer_method=method)
     return BuildResult(schedule=schedule, summary_markdown="\n".join(L) + "\n",
                        title=title, stats=stats)
 
 
-def main(tasks_path, resources_path, calendar_path, out_dir, title):
+def main(tasks_path, resources_path, calendar_path, out_dir, title,
+         buffer_method=None):
     try:
         network = io.load_network(tasks_path, resources_path, calendar_path)
-        result = build_schedule(network, title)
+        result = build_schedule(network, title, buffer_method=buffer_method)
     except CcpmError as e:
         print(f"error: {e} — run the validator (ccpm_scheduler.validate) "
               f"for a full report", file=sys.stderr)
@@ -546,14 +606,16 @@ def main(tasks_path, resources_path, calendar_path, out_dir, title):
 
 if __name__ == "__main__":
     argv = sys.argv
-    calendar_path, out_dir, title = None, ".", "CCPM schedule"
+    calendar_path, out_dir, title, buffer_method = None, ".", "CCPM schedule", None
     if "--calendar" in argv:
         i = argv.index("--calendar"); calendar_path = argv[i + 1]; del argv[i:i + 2]
     if "--out-dir" in argv:
         i = argv.index("--out-dir"); out_dir = argv[i + 1]; del argv[i:i + 2]
     if "--title" in argv:
         i = argv.index("--title"); title = argv[i + 1]; del argv[i:i + 2]
+    if "--buffer-method" in argv:
+        i = argv.index("--buffer-method"); buffer_method = argv[i + 1]; del argv[i:i + 2]
     if len(argv) != 3:
         print(__doc__)
         sys.exit(2)
-    main(argv[1], argv[2], calendar_path, out_dir, title)
+    main(argv[1], argv[2], calendar_path, out_dir, title, buffer_method)

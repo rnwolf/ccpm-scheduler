@@ -6,4 +6,4 @@ E,Test rig,task,feeding-1,15,20,5,10,green,C,https://example.com/tickets/test-ri
 D,Integrate,task,critical,15,25,10,20,blue,B,https://example.com/tickets/integrate
 F,Commission,task,critical,25,30,5,10,red,D;FB1:FB,https://example.com/wiki/commissioning
 FB1,Feeding buffer 1,feeding_buffer,feeding-1,20,25,5,,,E:FB,
-PB,Project buffer,project_buffer,critical,30,60,30,,,F:PB,
+PB,Project buffer,project_buffer,critical,30,46,16,,,F:PB,

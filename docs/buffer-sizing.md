@@ -72,8 +72,8 @@ than traditional ones (only the *behavior* differs).
 
 > Buffer = ⌈0.5 × Σ optimalᵢ⌉
 
-The most common textbook rule and **the method implemented today** (for both project and feeding
-buffers): the buffer is half the protected chain's scheduled length.
+The most common textbook rule, and the hard-coded behavior before v0.9 (for both project and
+feeding buffers): the buffer is half the protected chain's scheduled length.
 
 - **Two-point estimates**: Δs are *ignored* — a chain of tight estimates and a chain of wild
   guesses of equal length get identical buffers. This is the method's central weakness: it
@@ -142,11 +142,15 @@ aggregation at work.
 
 ## Selecting a method
 
-- CLI: `ccpm-scheduler build ... --buffer-method {cap,hchain,rsem}` — default `cap`.
-  *(Planned — today the tool always applies HCHAIN; see PLAN.md Phase 6.)*
-- Library: `build_schedule(network, title, buffer_method="cap")` *(same status)*.
-- The chosen method is recorded in `summary.md`; feeding and project buffers always use the
-  same method within one schedule.
+- CLI: `ccpm-scheduler build ... --buffer-method {cap,hchain,rsem}` — default `cap`
+  (since v0.9; before that HCHAIN was hard-coded).
+- Library: `build_schedule(network, title, buffer_method="cap")`. The JSON exchange format
+  accepts a top-level `"buffer_method"` key, which an explicit flag/argument overrides.
+- The chosen method is recorded in `summary.md`, along with how many tasks in each protected
+  chain had derived Δs; feeding and project buffers always use the same method within one
+  schedule. A buffer is never smaller than 1 day. When a feeding chain cannot shift far enough
+  to fit its full buffer, the achieved gap is all the protection that merge has — the summary
+  shows `N (method wanted M)` so the shortfall is visible.
 - Consumers: our-planner sets the method per project (`CCPM Method` in its project settings);
   the Claude skill asks the user, and when the user is unsure it gathers two-point estimates
   and uses CAP.

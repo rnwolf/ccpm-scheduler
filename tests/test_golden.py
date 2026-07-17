@@ -64,6 +64,20 @@ def test_schedule_passes_check(project, tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+@pytest.mark.parametrize("method", ["hchain", "rsem"])
+def test_build_method_matches_golden(method, tmp_path):
+    """Non-default buffer methods, pinned on the example project. The
+    default (cap) is covered by the main goldens; the hchain schedule.csv
+    is byte-identical to the pre-Phase-6 golden (the old hard-coded rule)."""
+    r = run_module("build", *build_args("example", tmp_path),
+                   "--buffer-method", method)
+    assert r.returncode == 0, r.stdout + r.stderr
+    for name in ("schedule.csv", "summary.md"):
+        got = (tmp_path / name).read_bytes()
+        want = (GOLDEN / f"example-{method}" / name).read_bytes()
+        assert got == want, f"example-{method}/{name} differs from golden"
+
+
 def test_legacy_duration_aliases(tmp_path):
     """duration_safe/duration_aggressive headers must yield identical output."""
     d = DATA / "example"

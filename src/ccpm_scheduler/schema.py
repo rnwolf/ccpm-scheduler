@@ -34,6 +34,14 @@ NETWORK_SCHEMA = {
                 "resource's capacity on the half-open day range [from, to); "
                 "capacity 0 means unavailable. Tasks execute contiguously — "
                 "they never pause across an outage.")},
+        "buffer_method": {
+            "enum": ["cap", "hchain", "rsem"],
+            "description": (
+                "Optional buffer-sizing method for both buffer types "
+                "(default cap). cap = Cut & Paste (buffer = sum of safety "
+                "removed from the protected chain), hchain = 50% of chain "
+                "length, rsem = root-squared error. A --buffer-method CLI "
+                "flag overrides this key. See docs/buffer-sizing.md.")},
     },
     "$defs": {
         "task": {

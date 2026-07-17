@@ -54,7 +54,7 @@ def test_html_structure_and_payload():
     # legend and summary present
     assert {l["label"] for l in graph["legend"]} >= \
         {"Critical chain", "Project buffer", "Feeding buffer"}
-    assert "promised completion: day 45" in graph["summary"]
+    assert "promised completion: day 60" in graph["summary"]
 
 
 def test_script_injection_guarded():

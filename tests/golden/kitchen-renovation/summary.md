@@ -2,11 +2,12 @@
 
 - **Critical chain**: K1 Demolition → K3 Plumbing → K6 Tiling → K4 Cabinets → K5 Worktops and finishing
 - **Critical chain length**: 19 working days (work finishes day 22)
-- **Project buffer**: 10 days → **promised completion: day 32**
+- **Project buffer**: 19 days → **promised completion: day 41**
+- **Buffer sizing**: CAP (Cut & Paste: buffer = Σ safety removed from the chain) — 5 of 5 critical-chain tasks have derived (single-point) safety estimates
 
-| Feeding buffer | Protects | Size (days) | Merges into |
-|---|---|---|---|
-| FB1 | K2 Electrics | 2 | start of K4 Cabinets |
+| Feeding buffer | Protects | Size (days) | Derived estimates | Merges into |
+|---|---|---|---|---|
+| FB1 | K2 Electrics | 3 | 1 of 1 | start of K4 Cabinets |
 
 Resource availability from `calendar.csv` is honored: tasks are placed contiguously around outage windows (grey blocks in the Gantt utilization panel), never split across them.
 

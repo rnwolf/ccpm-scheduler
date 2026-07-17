@@ -78,7 +78,8 @@ def test_build_json_and_files(tmp_path):
     j = json.loads(r.stdout)
     assert j["ok"] is True
     assert j["stats"]["critical_chain"] == ["A", "B", "D", "F"]
-    assert j["stats"]["promise_day"] == 45
+    assert j["stats"]["promise_day"] == 60
+    assert j["stats"]["buffer_method"] == "cap"
     ids = [row["id"] for row in j["schedule"]["rows"]]
     assert "PB" in ids
     # files written and byte-identical to the goldens
@@ -156,8 +157,8 @@ def test_check_catches_violation_json(tmp_path):
     cli("build", *example_args()[:2], "--calendar", example_args()[2],
         "--out-dir", tmp_path, "--title", "example")
     sched = (tmp_path / "schedule.csv").read_text().replace(
-        "PB,Project buffer,project_buffer,critical,30,45,15",
-        "PB,Project buffer,project_buffer,critical,29,44,15")
+        "PB,Project buffer,project_buffer,critical,30,60,30",
+        "PB,Project buffer,project_buffer,critical,29,59,30")
     (tmp_path / "schedule.csv").write_text(sched)
     r = cli("check", tmp_path / "schedule.csv", *example_args(), "--json")
     assert r.returncode == 1
