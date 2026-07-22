@@ -72,8 +72,8 @@ than traditional ones (only the *behavior* differs).
 
 > Buffer = ⌈0.5 × Σ optimalᵢ⌉
 
-The most common textbook rule, and the hard-coded behavior before v0.9 (for both project and
-feeding buffers): the buffer is half the protected chain's scheduled length.
+The most common textbook rule: the buffer is half the protected chain's scheduled length.
+
 
 - **Two-point estimates**: Δs are *ignored* — a chain of tight estimates and a chain of wild
   guesses of equal length get identical buffers. This is the method's central weakness: it
@@ -142,8 +142,8 @@ aggregation at work.
 
 ## Selecting a method
 
-- CLI: `ccpm-scheduler build ... --buffer-method {cap,hchain,rsem}` — default `cap`
-  (since v0.9; before that HCHAIN was hard-coded).
+- CLI: `ccpm-scheduler build ... --buffer-method {cap,hchain,rsem}` — default `cap`.
+
 - Library: `build_schedule(network, title, buffer_method="cap")`. The JSON exchange format
   accepts a top-level `"buffer_method"` key, which an explicit flag/argument overrides.
 - The chosen method is recorded in `summary.md`, along with how many tasks in each protected
@@ -152,7 +152,26 @@ aggregation at work.
   to fit its full buffer, the achieved gap is all the protection that merge has — the summary
   shows `N (method wanted M)` so the shortfall is visible.
 - Consumers: our-planner sets the method per project (`CCPM Method` in its project settings);
-  the Claude skill asks the user, and when the user is unsure it gathers two-point estimates
+  the AI skill asks the user, and when the user is unsure it gathers two-point estimates
   and uses CAP.
+
 - Whatever the method produces, buffers can be manually resized in our-planner before the
   project enters execution mode — the formula is a starting point, not a contract.
+
+---
+
+## Frequently Asked Questions (FAQ)
+
+### How does `ccpm-scheduler` deal with feeding buffers when feeding chains are equally long as (or land tight against) the Critical Chain?
+
+When a feeding chain finishes tight against its merge point on the Critical Chain (or when project start / resource constraints prevent shifting the feeding chain earlier), attempting to force a full-sized feeding buffer could risk elongating the Critical Chain or pushing project start before Day 0.
+
+`ccpm-scheduler` resolves this using **constrained backward shifting**, **gap absorption (pre-consumed buffers)**, and **unprotected merge detection**:
+
+1. **Constrained Backward Shifting**: The scheduler first attempts to shift the feeding chain backward to open up space for the calculated feeding buffer size $M$, bounded by Day 0, predecessor links, and resource availability across all chains.
+2. **Pre-Consumed Buffers & Gap Absorption (`N (method wanted M)`)**: If the feeding chain cannot shift far enough to fit the full calculated buffer $M$, `ccpm-scheduler` fits whatever gap $N$ is available ($0 < N < M$). It sets the buffer duration to $N$ days without extending the Critical Chain, and reports `N (method wanted M)` in `summary.md` and CLI build stats so the buffer shortfall is fully visible.
+3. **Unprotected Merges (`gap = 0`)**: If the feeding chain finishes tight against its critical successor ($N = 0$) and cannot shift earlier at all, `ccpm-scheduler` enforces a policy to **never emit a zero-length (0-day) buffer row**. The buffer is omitted entirely and flagged in `summary.md` with an explicit warning:
+   > *"Warning: the merge ... has no room for a feeding buffer — that path is effectively critical. Watch it as closely as the critical chain."*
+
+See the full [FAQ page](faq.md) for more answers to common scheduling and layout questions.
+

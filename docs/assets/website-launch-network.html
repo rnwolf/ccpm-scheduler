@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Website Launch — project network</title>
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+           Helvetica, Arial, sans-serif; margin: 0; display: flex;
+           flex-direction: column; height: 100vh; }
+    #header { padding: 10px 16px; border-bottom: 1px solid #ddd;
+              background: #ffffff; }
+    #header h1 { margin: 0; font-size: 1.1rem; color: #222; }
+    #header .summary { color: #666; font-size: 0.85rem; margin-top: 2px; }
+    #main { flex: 1; display: flex; min-height: 0; }
+    #network-container { flex: 1; height: 100%; background: #f8f9fa; }
+    #sidebar { width: 320px; padding: 16px; border-left: 1px solid #ddd;
+               background: #ffffff; overflow-y: auto; }
+    #sidebar h2 { margin-top: 0; font-size: 1rem; color: #333; }
+    .detail-label { font-weight: bold; color: #666; margin-top: 10px;
+                    font-size: 0.8rem; }
+    .detail-value { color: #222; font-size: 0.9rem; word-break: break-word; }
+    #task-details { display: none; }
+    #placeholder-text { color: #888; font-style: italic; font-size: 0.9rem; }
+    #legend { margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
+    .legend-item { display: flex; align-items: center; margin: 4px 0;
+                   font-size: 0.8rem; color: #444; }
+    .legend-swatch { width: 14px; height: 14px; border-radius: 3px;
+                     margin-right: 8px; border: 1px solid #999;
+                     flex: none; }
+    #controls { margin-top: 16px; border-top: 1px solid #eee;
+                padding-top: 10px; }
+    #controls button { font-size: 0.8rem; padding: 4px 10px;
+                       margin-right: 6px; cursor: pointer; }
+    #filter-box { margin-bottom: 14px; padding-bottom: 12px;
+                  border-bottom: 1px solid #eee; }
+    #filter-box label { font-weight: bold; color: #666; font-size: 0.8rem;
+                        display: block; margin-bottom: 4px; }
+    #resource-filter { width: 100%; font-size: 0.9rem; padding: 3px; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>Website Launch</h1>
+    <div class="summary" id="summary"></div>
+  </div>
+  <div id="main">
+    <div id="network-container"></div>
+    <div id="sidebar">
+      <div id="filter-box">
+        <label for="resource-filter">Resource filter</label>
+        <select id="resource-filter"></select>
+      </div>
+      <h2>Task inspector</h2>
+      <div id="placeholder-text">Click a node to view task details.
+        Drag nodes, scroll to zoom, drag the background to pan.</div>
+      <div id="task-details">
+        <div class="detail-label">Task</div>
+        <div id="detail-name" class="detail-value"></div>
+        <div class="detail-label">Type / chain</div>
+        <div id="detail-type" class="detail-value"></div>
+        <div class="detail-label">Schedule</div>
+        <div id="detail-schedule" class="detail-value"></div>
+        <div class="detail-label" id="label-estimates">Estimates</div>
+        <div id="detail-estimates" class="detail-value"></div>
+        <div class="detail-label">Resources</div>
+        <div id="detail-resources" class="detail-value"></div>
+        <div class="detail-label">Predecessors</div>
+        <div id="detail-preds" class="detail-value"></div>
+        <div class="detail-label">Link</div>
+        <div id="detail-url" class="detail-value"></div>
+      </div>
+      <div id="legend"></div>
+      <div id="controls">
+        <button id="btn-fit">Fit view</button>
+        <button id="btn-layout">Free layout</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GRAPH = {
+  "nodes": [
+    {
+      "id": "W1",
+      "label": "W1\nContent outline",
+      "shape": "box",
+      "color": {
+        "background": "#1f77b4",
+        "border": "#555555",
+        "highlight": {
+          "background": "#1f77b4",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Content outline: day 0 \u2013 3 (3d optimal, 6d realistic)",
+      "data": {
+        "name": "Content outline",
+        "type": "task",
+        "chain": "feeding-2",
+        "start": 0,
+        "finish": 3,
+        "duration": 3,
+        "realistic": 6,
+        "resources": "writer",
+        "resource_list": [
+          "writer"
+        ],
+        "predecessors": "",
+        "url": "https://example.com/tickets/W1"
+      }
+    },
+    {
+      "id": "W5",
+      "label": "W5\nBuild backend",
+      "shape": "box",
+      "color": {
+        "background": "#b22222",
+        "border": "#7a1717",
+        "highlight": {
+          "background": "#b22222",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#ffffff"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Build backend: day 0 \u2013 8 (8d optimal, 16d realistic)",
+      "data": {
+        "name": "Build backend",
+        "type": "task",
+        "chain": "critical",
+        "start": 0,
+        "finish": 8,
+        "duration": 8,
+        "realistic": 16,
+        "resources": "dev",
+        "resource_list": [
+          "dev"
+        ],
+        "predecessors": "",
+        "url": "https://example.com/tickets/W5"
+      }
+    },
+    {
+      "id": "W3",
+      "label": "W3\nDesign mockups",
+      "shape": "box",
+      "color": {
+        "background": "#2ca02c",
+        "border": "#555555",
+        "highlight": {
+          "background": "#2ca02c",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Design mockups: day 3 \u2013 7 (4d optimal, 8d realistic)",
+      "data": {
+        "name": "Design mockups",
+        "type": "task",
+        "chain": "feeding-1",
+        "start": 3,
+        "finish": 7,
+        "duration": 4,
+        "realistic": 8,
+        "resources": "designer",
+        "resource_list": [
+          "designer"
+        ],
+        "predecessors": "W1",
+        "url": "https://example.com/tickets/W3"
+      }
+    },
+    {
+      "id": "W4",
+      "label": "W4\nBuild frontend",
+      "shape": "box",
+      "color": {
+        "background": "#b22222",
+        "border": "#7a1717",
+        "highlight": {
+          "background": "#b22222",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#ffffff"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Build frontend: day 8 \u2013 14 (6d optimal, 12d realistic)",
+      "data": {
+        "name": "Build frontend",
+        "type": "task",
+        "chain": "critical",
+        "start": 8,
+        "finish": 14,
+        "duration": 6,
+        "realistic": 12,
+        "resources": "dev",
+        "resource_list": [
+          "dev"
+        ],
+        "predecessors": "FB1:FB",
+        "url": "https://example.com/tickets/W4"
+      }
+    },
+    {
+      "id": "W2",
+      "label": "W2\nDraft copy",
+      "shape": "box",
+      "color": {
+        "background": "#1f77b4",
+        "border": "#555555",
+        "highlight": {
+          "background": "#1f77b4",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Draft copy: day 9 \u2013 14 (5d optimal, 10d realistic)",
+      "data": {
+        "name": "Draft copy",
+        "type": "task",
+        "chain": "feeding-2",
+        "start": 9,
+        "finish": 14,
+        "duration": 5,
+        "realistic": 10,
+        "resources": "writer",
+        "resource_list": [
+          "writer"
+        ],
+        "predecessors": "W1",
+        "url": "https://example.com/tickets/W2"
+      }
+    },
+    {
+      "id": "W7",
+      "label": "W7\nEdit copy",
+      "shape": "box",
+      "color": {
+        "background": "#1f77b4",
+        "border": "#555555",
+        "highlight": {
+          "background": "#1f77b4",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Edit copy: day 14 \u2013 17 (3d optimal, 6d realistic)",
+      "data": {
+        "name": "Edit copy",
+        "type": "task",
+        "chain": "feeding-2",
+        "start": 14,
+        "finish": 17,
+        "duration": 3,
+        "realistic": 6,
+        "resources": "editor",
+        "resource_list": [
+          "editor"
+        ],
+        "predecessors": "W2",
+        "url": "https://example.com/tickets/W7"
+      }
+    },
+    {
+      "id": "W6",
+      "label": "W6\nIntegrate",
+      "shape": "box",
+      "color": {
+        "background": "#b22222",
+        "border": "#7a1717",
+        "highlight": {
+          "background": "#b22222",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#ffffff"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Integrate: day 14 \u2013 18 (4d optimal, 8d realistic)",
+      "data": {
+        "name": "Integrate",
+        "type": "task",
+        "chain": "critical",
+        "start": 14,
+        "finish": 18,
+        "duration": 4,
+        "realistic": 8,
+        "resources": "dev",
+        "resource_list": [
+          "dev"
+        ],
+        "predecessors": "W4; W5",
+        "url": "https://example.com/tickets/W6"
+      }
+    },
+    {
+      "id": "W8",
+      "label": "W8\nLoad content",
+      "shape": "box",
+      "color": {
+        "background": "#b22222",
+        "border": "#7a1717",
+        "highlight": {
+          "background": "#b22222",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#ffffff"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Load content: day 18 \u2013 20 (2d optimal, 4d realistic)",
+      "data": {
+        "name": "Load content",
+        "type": "task",
+        "chain": "critical",
+        "start": 18,
+        "finish": 20,
+        "duration": 2,
+        "realistic": 4,
+        "resources": "writer",
+        "resource_list": [
+          "writer"
+        ],
+        "predecessors": "W6; FB2:FB",
+        "url": "https://example.com/tickets/W8"
+      }
+    },
+    {
+      "id": "W9",
+      "label": "W9\nLaunch QA",
+      "shape": "box",
+      "color": {
+        "background": "#b22222",
+        "border": "#7a1717",
+        "highlight": {
+          "background": "#b22222",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#ffffff"
+      },
+      "shapeProperties": {
+        "borderDashes": false
+      },
+      "borderWidth": 1,
+      "title": "Launch QA: day 20 \u2013 23 (3d optimal, 6d realistic)",
+      "data": {
+        "name": "Launch QA",
+        "type": "task",
+        "chain": "critical",
+        "start": 20,
+        "finish": 23,
+        "duration": 3,
+        "realistic": 6,
+        "resources": "qa",
+        "resource_list": [
+          "qa"
+        ],
+        "predecessors": "W8",
+        "url": "https://example.com/tickets/W9"
+      }
+    },
+    {
+      "id": "FB1",
+      "label": "FB1\nFeeding buffer 1",
+      "shape": "box",
+      "color": {
+        "background": "#f0e68c",
+        "border": "#8a8250",
+        "highlight": {
+          "background": "#f0e68c",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": [
+          4,
+          3
+        ]
+      },
+      "borderWidth": 2,
+      "title": "Feeding buffer 1: day 7 \u2013 8 (1d)",
+      "data": {
+        "name": "Feeding buffer 1",
+        "type": "feeding_buffer",
+        "chain": "feeding-1",
+        "start": 7,
+        "finish": 8,
+        "duration": 1,
+        "realistic": null,
+        "resources": "",
+        "resource_list": [],
+        "predecessors": "W3:FB",
+        "url": ""
+      }
+    },
+    {
+      "id": "FB2",
+      "label": "FB2\nFeeding buffer 2",
+      "shape": "box",
+      "color": {
+        "background": "#f0e68c",
+        "border": "#8a8250",
+        "highlight": {
+          "background": "#f0e68c",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": [
+          4,
+          3
+        ]
+      },
+      "borderWidth": 2,
+      "title": "Feeding buffer 2: day 17 \u2013 18 (1d)",
+      "data": {
+        "name": "Feeding buffer 2",
+        "type": "feeding_buffer",
+        "chain": "feeding-2",
+        "start": 17,
+        "finish": 18,
+        "duration": 1,
+        "realistic": null,
+        "resources": "",
+        "resource_list": [],
+        "predecessors": "W7:FB",
+        "url": ""
+      }
+    },
+    {
+      "id": "PB",
+      "label": "PB\nProject buffer",
+      "shape": "box",
+      "color": {
+        "background": "#ffd700",
+        "border": "#8a7500",
+        "highlight": {
+          "background": "#ffd700",
+          "border": "#000000"
+        }
+      },
+      "font": {
+        "color": "#1a1a1a"
+      },
+      "shapeProperties": {
+        "borderDashes": [
+          4,
+          3
+        ]
+      },
+      "borderWidth": 2,
+      "title": "Project buffer: day 23 \u2013 46 (23d)",
+      "data": {
+        "name": "Project buffer",
+        "type": "project_buffer",
+        "chain": "critical",
+        "start": 23,
+        "finish": 46,
+        "duration": 23,
+        "realistic": null,
+        "resources": "",
+        "resource_list": [],
+        "predecessors": "W9:PB",
+        "url": ""
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "from": "W1",
+      "to": "W3",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e1",
+      "from": "FB1",
+      "to": "W4",
+      "arrows": "to",
+      "dashes": [
+        6,
+        4
+      ],
+      "color": {
+        "color": "#666666"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e2",
+      "from": "W1",
+      "to": "W2",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e3",
+      "from": "W2",
+      "to": "W7",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e4",
+      "from": "W4",
+      "to": "W6",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e5",
+      "from": "W5",
+      "to": "W6",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e6",
+      "from": "W6",
+      "to": "W8",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e7",
+      "from": "FB2",
+      "to": "W8",
+      "arrows": "to",
+      "dashes": [
+        6,
+        4
+      ],
+      "color": {
+        "color": "#666666"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e8",
+      "from": "W8",
+      "to": "W9",
+      "arrows": "to",
+      "dashes": false,
+      "color": {
+        "color": "#404040"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e9",
+      "from": "W3",
+      "to": "FB1",
+      "arrows": "to",
+      "dashes": [
+        6,
+        4
+      ],
+      "color": {
+        "color": "#666666"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e10",
+      "from": "W7",
+      "to": "FB2",
+      "arrows": "to",
+      "dashes": [
+        6,
+        4
+      ],
+      "color": {
+        "color": "#666666"
+      },
+      "width": 1.5
+    },
+    {
+      "id": "e11",
+      "from": "W9",
+      "to": "PB",
+      "arrows": "to",
+      "dashes": [
+        6,
+        4
+      ],
+      "color": {
+        "color": "#666666"
+      },
+      "width": 1.5
+    }
+  ],
+  "legend": [
+    {
+      "color": "#b22222",
+      "label": "Critical chain"
+    },
+    {
+      "color": "#2ca02c",
+      "label": "Feeding chain 1"
+    },
+    {
+      "color": "#1f77b4",
+      "label": "Feeding chain 2"
+    },
+    {
+      "color": "#ffd700",
+      "label": "Project buffer"
+    },
+    {
+      "color": "#f0e68c",
+      "label": "Feeding buffer"
+    }
+  ],
+  "summary": "Critical chain: 5 tasks, 23 working days \u2014 project buffer 23d \u2014 promised completion: day 46",
+  "resources": [
+    "designer",
+    "dev",
+    "editor",
+    "qa",
+    "writer"
+  ]
+};
+
+    document.getElementById('summary').innerText = GRAPH.summary;
+
+    const legendBox = document.getElementById('legend');
+    for (const item of GRAPH.legend) {
+      const row = document.createElement('div');
+      row.className = 'legend-item';
+      const swatch = document.createElement('span');
+      swatch.className = 'legend-swatch';
+      swatch.style.background = item.color;
+      const label = document.createElement('span');
+      label.innerText = item.label;
+      row.appendChild(swatch);
+      row.appendChild(label);
+      legendBox.appendChild(row);
+    }
+
+    const nodes = new vis.DataSet(GRAPH.nodes);
+    const edges = new vis.DataSet(GRAPH.edges);
+    const container = document.getElementById('network-container');
+
+    // Resource filter: matching tasks stay solid, everything else fades so
+    // each person can see their own tasks in the context of the whole plan.
+    const filterSelect = document.getElementById('resource-filter');
+    const filterOptions = [['__all__', 'All resources'],
+                           ['__unassigned__', 'Unassigned']]
+      .concat(GRAPH.resources.map(r => [r, r]));
+    for (const [value, text] of filterOptions) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.innerText = text;
+      filterSelect.appendChild(opt);
+    }
+    filterSelect.addEventListener('change', () => {
+      const v = filterSelect.value;
+      const matches = (n) => {
+        if (v === '__all__') return true;
+        const d = n.data;
+        if (v === '__unassigned__')
+          return d.type === 'task' && d.duration > 0
+            && d.resource_list.length === 0;
+        return d.resource_list.includes(v);
+      };
+      const matched = new Set(
+        GRAPH.nodes.filter(matches).map(n => n.id));
+      nodes.update(GRAPH.nodes.map(n => (
+        { id: n.id, opacity: matched.has(n.id) ? 1 : 0.15 })));
+      edges.update(GRAPH.edges.map(e => (
+        { id: e.id,
+          color: { color: e.color.color,
+                   opacity: matched.has(e.from) && matched.has(e.to)
+                     ? 1 : 0.12 } })));
+    });
+
+    const hierarchical = {
+      layout: { hierarchical: { enabled: true, direction: 'LR',
+                                sortMethod: 'directed',
+                                levelSeparation: 180, nodeSpacing: 70 } },
+      physics: { enabled: false },
+      nodes: { widthConstraint: { maximum: 170 },
+               margin: { top: 8, bottom: 8, left: 10, right: 10 } },
+      edges: { font: { size: 10, color: '#555555', strokeWidth: 4,
+                       strokeColor: '#f8f9fa' },
+               smooth: { type: 'cubicBezier',
+                         forceDirection: 'horizontal', roundness: 0.4 } },
+      interaction: { hover: true, navigationButtons: true, keyboard: true },
+    };
+    const free = {
+      layout: { hierarchical: { enabled: false } },
+      physics: { enabled: true,
+                 barnesHut: { springLength: 160, gravitationalConstant: -4000 } },
+      nodes: hierarchical.nodes,
+      edges: { ...hierarchical.edges, smooth: { type: 'dynamic' } },
+      interaction: hierarchical.interaction,
+    };
+
+    const network = new vis.Network(container, { nodes, edges }, hierarchical);
+    let freeMode = false;
+
+    document.getElementById('btn-fit').addEventListener('click',
+      () => network.fit({ animation: true }));
+    document.getElementById('btn-layout').addEventListener('click', (e) => {
+      freeMode = !freeMode;
+      network.setOptions(freeMode ? free : hierarchical);
+      e.target.innerText = freeMode ? 'Hierarchical layout' : 'Free layout';
+      network.fit({ animation: true });
+    });
+
+    network.on('click', (params) => {
+      const details = document.getElementById('task-details');
+      const placeholder = document.getElementById('placeholder-text');
+      if (params.nodes.length === 0) {
+        details.style.display = 'none';
+        placeholder.style.display = 'block';
+        return;
+      }
+      const d = nodes.get(params.nodes[0]).data;
+      placeholder.style.display = 'none';
+      details.style.display = 'block';
+      document.getElementById('detail-name').innerText =
+        `${params.nodes[0]} — ${d.name}`;
+      document.getElementById('detail-type').innerText =
+        `${d.type.replace('_', ' ')} / ${d.chain}`;
+      document.getElementById('detail-schedule').innerText =
+        `day ${d.start} → ${d.finish} (${d.duration} working days)`;
+      const hasRealistic = d.realistic !== null && d.realistic !== undefined;
+      document.getElementById('label-estimates').style.display =
+        hasRealistic ? 'block' : 'none';
+      const estimatesBox = document.getElementById('detail-estimates');
+      estimatesBox.style.display = hasRealistic ? 'block' : 'none';
+      if (hasRealistic) {
+        const cut = d.realistic > 0
+          ? Math.round(100 * (1 - d.duration / d.realistic)) : 0;
+        estimatesBox.innerText =
+          `optimal ${d.duration}d · realistic ${d.realistic}d` +
+          (cut > 0 ? ` (${cut}% safety pooled into buffers)` : '');
+      }
+      document.getElementById('detail-resources').innerText =
+        d.resources || '—';
+      document.getElementById('detail-preds').innerText =
+        d.predecessors || '— (start task)';
+      const urlBox = document.getElementById('detail-url');
+      urlBox.innerHTML = '';
+      if (d.url) {
+        const a = document.createElement('a');
+        a.href = d.url; a.target = '_blank'; a.rel = 'noopener';
+        a.innerText = d.url;
+        urlBox.appendChild(a);
+      } else {
+        urlBox.innerText = '—';
+      }
+    });
+  </script>
+</body>
+</html>

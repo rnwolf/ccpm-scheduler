@@ -1,0 +1,40 @@
+[project]
+site_name = "ccpm-scheduler"
+site_description = "Deterministic Critical Chain Project Management (CCPM) scheduler in Python"
+site_author = "R.N. Wolf"
+site_url = "https://rnwolf.github.io/ccpm-scheduler/"
+repo_url = "https://github.com/rnwolf/ccpm-scheduler"
+repo_name = "rnwolf/ccpm-scheduler"
+
+copyright = """
+Copyright &copy; 2026 <a href="https://www.rnwolf.net/" target="_blank" rel="noopener">R.N. Wolf</a>
+"""
+
+nav = [
+    { "Overview" = "index.md" },
+    { "Walkthrough Examples" = "examples.md" },
+    { "Core Concepts" = "concepts.md" },
+    { "CLI Reference" = "cli-reference.md" },
+    { "Data Formats & Schemas" = "formats.md" },
+    { "Buffer Sizing" = "buffer-sizing.md" },
+    { "Network Layout Engine" = "network-layout.md" },
+    { "Python API" = "python-api.md" },
+    { "AI Agent & Tool Integration" = "agent-integration.md" },
+    { "Frequently Asked Questions" = "faq.md" },
+    { "Resources & References" = "references.md" },
+]
+
+[project.theme]
+language = "en"
+features = [
+    "content.code.annotate",
+    "content.code.copy",
+    "content.code.select",
+    "content.footnote.tooltips",
+    "content.tabs.link",
+    "content.tooltips",
+    "navigation.sections",
+    "navigation.top",
+    "search.highlight",
+    "search.suggest",
+]
