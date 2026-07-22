@@ -73,3 +73,4 @@ For organizations scaling beyond open-source utilities into multi-user enterpris
 - **[Realization Concerto](https://www.realization.com/)**: Execution-focused multi-project Critical Chain software and fever chart management platform.
 - **[Exepron](https://www.exepron.com/)**: Cloud-based CCPM software suite for single and multi-project portfolio scheduling.
 - **[Lynx (A-Systems)](https://www.a-systems.nl/)**: Agile and Critical Chain Project Management software for multi-project environments.
+- **[agileCCPM for Jira](https://agileccpm.com/)**: Critical Chain Project Management integration for Jira teams and agile project portfolios.
