@@ -40,9 +40,6 @@ This page provides a curated list of books, articles, web resources, and video l
 - **[Goldratt Institute](https://www.goldratt.com/)**  
   Educational resources, articles, and whitepapers on Goldratt's methods and project management applications.
 
-- **[PMI Knowledge Base: Critical Chain Project Management](https://www.pmi.org/learning/library/critical-chain-project-management-schedule-5667)**  
-  Project Management Institute (PMI) comparative analyses evaluating CPM vs. CCPM in practice.
-
 - **[APM Blog: Critical Chain: why isn't it much more common?](https://www.apm.org.uk/blog/critical-chain-why-isn-t-it-much-more-common/)**  
   An Association for Project Management (APM) analysis discussing adoption challenges, organizational cultural shifts, and practical realities of CCPM.
 
