@@ -31,13 +31,23 @@ milestone alone -> schedule.csv + summary.md.
 Verify the output with ccpm_scheduler.check and render it with
 ccpm_scheduler.plot.
 """
-import math, sys
+
+import math
+import sys
 from collections import defaultdict
 
 from . import io
-from .model import (Network, CcpmError, Schedule, ScheduleRow,
-                    BuildResult, BuildStats, as_int,
-                    BUFFER_METHODS, DEFAULT_BUFFER_METHOD)
+from .model import (
+    BUFFER_METHODS,
+    DEFAULT_BUFFER_METHOD,
+    BuildResult,
+    BuildStats,
+    CcpmError,
+    Network,
+    Schedule,
+    ScheduleRow,
+    as_int,
+)
 
 LINK_RE = io.INPUT_LINK_RE
 
@@ -63,16 +73,16 @@ def buffer_size(method, members, dur, delta):
 
 class Net:
     """The engine's working view of a Network."""
+
     def __init__(self, network: Network):
-        self.T = {}     # tid -> dict(name, dur, links, res, url, predstr)
+        self.T = {}  # tid -> dict(name, dur, links, res, url, predstr)
         for t in network.tasks:
             try:
                 dur = t.duration
             except ValueError as e:
                 raise CcpmError(str(e)) from None
             try:
-                realistic = (as_int(t.realistic_duration)
-                             if t.realistic_duration not in (None, "") else None)
+                realistic = as_int(t.realistic_duration) if t.realistic_duration not in (None, "") else None
             except ValueError:
                 realistic = None
             # Δ = per-task safety, the input to the cap/rsem buffer methods.
@@ -80,32 +90,36 @@ class Net:
             # "stated" marks a genuine two-point estimate; a derived Δ is a
             # mechanical 50% assumption (reported in the summary).
             delta = max(realistic - dur, 0) if realistic is not None else dur
-            stated = (realistic is not None
-                      and t.optimal_duration not in (None, ""))
-            self.T[t.id] = dict(
-                name=t.name, dur=dur, realistic=realistic,
-                delta=delta, stated=stated,
-                links=[(l.pred_id, l.type, l.lag) for l in t.links],
-                predstr=t.predecessor_notation(),
-                res=list(t.resource_ids),
-                url=t.url or "")
+            stated = realistic is not None and t.optimal_duration not in (None, "")
+            self.T[t.id] = {
+                "name": t.name,
+                "dur": dur,
+                "realistic": realistic,
+                "delta": delta,
+                "stated": stated,
+                "links": [(lnk.pred_id, lnk.type, lnk.lag) for lnk in t.links],
+                "predstr": t.predecessor_notation(),
+                "res": list(t.resource_ids),
+                "url": t.url or "",
+            }
         try:
-            self.caps = {r.id: as_int(r.capacity, f"resource {r.id}: capacity")
-                         for r in network.resources}
+            self.caps = {r.id: as_int(r.capacity, f"resource {r.id}: capacity") for r in network.resources}
             self.cal = defaultdict(list)
             for w in network.calendar:
                 self.cal[w.resource_id].append(
-                    (as_int(w.start, "calendar from"),
-                     as_int(w.end, "calendar to"),
-                     as_int(w.capacity, "calendar capacity")))
+                    (
+                        as_int(w.start, "calendar from"),
+                        as_int(w.end, "calendar to"),
+                        as_int(w.capacity, "calendar capacity"),
+                    )
+                )
         except ValueError as e:
             raise CcpmError(str(e)) from None
         self.has_calendar = network.has_calendar
         # last day any calendar window touches; capacity is flat (= base)
         # from here on, which bounds every window search
-        self.cal_end = max((hi for ws in self.cal.values()
-                            for _, hi, _ in ws), default=0)
-        self.succ = defaultdict(list)   # tid -> [(sid, type, lag)]
+        self.cal_end = max((hi for ws in self.cal.values() for _, hi, _ in ws), default=0)
+        self.succ = defaultdict(list)  # tid -> [(sid, type, lag)]
         for tid, t in self.T.items():
             for pid, lt, lag in t["links"]:
                 if pid not in self.T:
@@ -117,19 +131,19 @@ class Net:
         # longest precedence path through each task (optimal durations)
         self.path_through = {}
         down, up = {}, {}
+
         def longest_down(tid):
             if tid not in down:
-                down[tid] = self.T[tid]["dur"] + max(
-                    (longest_down(s) for s, _, _ in self.succ[tid]), default=0)
+                down[tid] = self.T[tid]["dur"] + max((longest_down(s) for s, _, _ in self.succ[tid]), default=0)
             return down[tid]
+
         def longest_up(tid):
             if tid not in up:
-                up[tid] = self.T[tid]["dur"] + max(
-                    (longest_up(p) for p, _, _ in self.T[tid]["links"]), default=0)
+                up[tid] = self.T[tid]["dur"] + max((longest_up(p) for p, _, _ in self.T[tid]["links"]), default=0)
             return up[tid]
+
         for tid in self.T:
-            self.path_through[tid] = (longest_up(tid) + longest_down(tid)
-                                      - self.T[tid]["dur"])
+            self.path_through[tid] = longest_up(tid) + longest_down(tid) - self.T[tid]["dur"]
 
     def cap_on(self, res, day):
         for lo, hi, cap in self.cal.get(res, ()):
@@ -141,9 +155,7 @@ class Net:
         """Calendar walls only: every day of the span has capacity >= 1."""
         if start < 0:
             return False
-        return all(self.cap_on(r, d) >= 1
-                   for r in self.T[tid]["res"]
-                   for d in range(start, start + self.T[tid]["dur"]))
+        return all(self.cap_on(r, d) >= 1 for r in self.T[tid]["res"] for d in range(start, start + self.T[tid]["dur"]))
 
     def earliest_window(self, tid, lo):
         """Earliest start >= lo whose whole span passes cal_ok, or None if
@@ -162,11 +174,12 @@ class Net:
     def no_window_msg(self, tid):
         """Human-readable diagnosis for a task with no feasible window."""
         t = self.T[tid]
-        blocked = ([r for r in t["res"] if self.caps.get(r, 1) < 1]
-                   or t["res"])
-        return (f"task {tid} ({t['name']!r}, {t['dur']}d) has no feasible "
-                f"calendar window: resource(s) {', '.join(blocked)} never "
-                f"have capacity for its full duration")
+        blocked = [r for r in t["res"] if self.caps.get(r, 1) < 1] or t["res"]
+        return (
+            f"task {tid} ({t['name']!r}, {t['dur']}d) has no feasible "
+            f"calendar window: resource(s) {', '.join(blocked)} never "
+            f"have capacity for its full duration"
+        )
 
 
 def try_schedule(net, T):
@@ -175,7 +188,7 @@ def try_schedule(net, T):
     dur = {i: net.T[i]["dur"] for i in ids}
 
     # forward ASAP (sanity only, ensures T is not below critical length)
-    es = {i: 0 for i in ids}
+    es = dict.fromkeys(ids, 0)
     for _ in range(len(ids) + 2):
         changed = False
         for i in ids:
@@ -246,15 +259,12 @@ def try_schedule(net, T):
             for r in net.T[i]["res"]:
                 for d in range(start[i], start[i] + dur[i]):
                     demand[r][d] += 1
-        overload = [(d, r) for r in demand for d in demand[r]
-                    if demand[r][d] > net.cap_on(r, d)]
+        overload = [(d, r) for r in demand for d in demand[r] if demand[r][d] > net.cap_on(r, d)]
         if not overload:
             return start
         day, res = max(overload, key=lambda x: (x[0], [-ord(c) for c in x[1]]))
-        active = sorted(i for i in ids if res in net.T[i]["res"]
-                        and start[i] <= day < start[i] + dur[i])
-        ranked = sorted(active, key=lambda i: (-net.path_through[i],
-                                               -(start[i] + dur[i]), i))
+        active = sorted(i for i in ids if res in net.T[i]["res"] and start[i] <= day < start[i] + dur[i])
+        ranked = sorted(active, key=lambda i: (-net.path_through[i], -(start[i] + dur[i]), i))
         keeper, mover = ranked[0], ranked[-1]
         s = start[keeper] - dur[mover]
         while s >= 0 and not net.cal_ok(mover, s):
@@ -296,13 +306,11 @@ def serial_horizon(net, ids, dur):
         if s is None:
             raise CcpmError(net.no_window_msg(i))
         t = s + dur[i]
-    lags = sum(max(lag, 0)
-               for i in ids for _, _, lag in net.T[i]["links"])
+    lags = sum(max(lag, 0) for i in ids for _, _, lag in net.T[i]["links"])
     return t + lags
 
 
-def build_schedule(network: Network, title="CCPM schedule",
-                   buffer_method=None) -> BuildResult:
+def build_schedule(network: Network, title="CCPM schedule", buffer_method=None) -> BuildResult:
     """Build the CCPM schedule for a (validated) network.
 
     `buffer_method` sizes both buffer types: "cap" (default), "hchain", or
@@ -314,8 +322,7 @@ def build_schedule(network: Network, title="CCPM schedule",
     """
     method = buffer_method or network.buffer_method or DEFAULT_BUFFER_METHOD
     if method not in BUFFER_METHODS:
-        raise CcpmError(f"unknown buffer method {method!r} "
-                        f"(choose from {', '.join(BUFFER_METHODS)})")
+        raise CcpmError(f"unknown buffer method {method!r} (choose from {', '.join(BUFFER_METHODS)})")
     net = Net(network)
     ids = list(net.T)
     dur = {i: net.T[i]["dur"] for i in ids}
@@ -328,8 +335,7 @@ def build_schedule(network: Network, title="CCPM schedule",
             T0 = T
             break
     if start is None:
-        raise CcpmError("no feasible schedule found (check the calendar leaves "
-                        "room for every task)")
+        raise CcpmError("no feasible schedule found (check the calendar leaves room for every task)")
     fin = {i: start[i] + dur[i] for i in ids}
 
     # ---- critical chain ----
@@ -346,20 +352,18 @@ def build_schedule(network: Network, title="CCPM schedule",
                 continue
             if fin[x] == start[cur]:
                 out.append(x)
-            elif fin[x] < start[cur] and all(
-                    not net.cal_ok(cur, s)
-                    for s in range(fin[x], start[cur])):
+            elif fin[x] < start[cur] and all(not net.cal_ok(cur, s) for s in range(fin[x], start[cur])):
                 out.append(x)  # calendar outage, not slack, bounds cur
         return out
 
     reach_memo = {}
+
     def reach(x, exclude):
         key = x
         if key in reach_memo:
             return reach_memo[key]
         cands = candidates(x, exclude | {x})
-        r = start[x] if not cands else min(
-            reach(c, exclude | {x}) for c in cands)
+        r = start[x] if not cands else min(reach(c, exclude | {x}) for c in cands)
         reach_memo[key] = r
         return r
 
@@ -369,8 +373,7 @@ def build_schedule(network: Network, title="CCPM schedule",
         cands = candidates(cur, set(cc))
         if not cands:
             break
-        nxt = min(cands, key=lambda x: (reach(x, set(cc)),
-                                        0 if is_pred(x, cur) else 1, x))
+        nxt = min(cands, key=lambda x: (reach(x, set(cc)), 0 if is_pred(x, cur) else 1, x))
         cc.append(nxt)
         cur = nxt
     cc.reverse()
@@ -388,11 +391,15 @@ def build_schedule(network: Network, title="CCPM schedule",
         elif not noncc_succ:
             tails.append((t, None))  # sink -> protected by PB anchor
     back = {}
+
     def back_len(t):
         if t not in back:
-            back[t] = dur[t] + max((back_len(p) for p, _, _ in net.T[t]["links"]
-                                    if p not in cc_set), default=0)
+            back[t] = dur[t] + max(
+                (back_len(p) for p, _, _ in net.T[t]["links"] if p not in cc_set),
+                default=0,
+            )
         return back[t]
+
     tails.sort(key=lambda x: (-back_len(x[0]), x[0]))
     assigned, chains = set(), []
     for tail, join in tails:
@@ -401,14 +408,13 @@ def build_schedule(network: Network, title="CCPM schedule",
         chain, cur = [tail], tail
         assigned.add(tail)
         while True:
-            preds = [p for p, _, _ in net.T[cur]["links"]
-                     if p not in cc_set and p not in assigned]
+            preds = [p for p, _, _ in net.T[cur]["links"] if p not in cc_set and p not in assigned]
             if not preds:
                 break
             cur = max(preds, key=lambda p: (back_len(p), p))
             chain.append(cur)
             assigned.add(cur)
-        chains.append(dict(tasks=list(reversed(chain)), tail=tail, join=join))
+        chains.append({"tasks": list(reversed(chain)), "tail": tail, "join": join})
 
     # ---- buffers ----
     last_cc_fin = max(fin[i] for i in cc)
@@ -421,14 +427,18 @@ def build_schedule(network: Network, title="CCPM schedule",
     def chain_deps(a, b):  # True if a has a member that is a pred of a member of b
         bt = set(b["tasks"])
         return any(s in bt for m in a["tasks"] for s, _, _ in net.succ[m])
+
     ordered = []
     remaining = chains[:]
     while remaining:
         for c in remaining:
             if not any(chain_deps(o, c) for o in remaining if o is not c):
-                ordered.append(c); remaining.remove(c); break
+                ordered.append(c)
+                remaining.remove(c)
+                break
         else:
-            ordered.extend(remaining); break
+            ordered.extend(remaining)
+            break
 
     def try_shift(members, d):
         """Shift chain members d days earlier, dragging non-critical external
@@ -490,7 +500,8 @@ def build_schedule(network: Network, title="CCPM schedule",
                     fin[m] = s + dur[m]
                 break
 
-    assert min(start.values()) >= 0
+    if min(start.values()) < 0:
+        raise ValueError("Scheduled start time cannot be negative")
 
     # ---- chain labels ----
     chain_label = {}
@@ -514,8 +525,9 @@ def build_schedule(network: Network, title="CCPM schedule",
                     stack.append(p)
         return seen
 
-    merges = [dict(attach=ch["tasks"][-1], join=ch["join"], size=ch["size"],
-                   tasks=ch["tasks"]) for ch in chains]
+    merges = [
+        {"attach": ch["tasks"][-1], "join": ch["join"], "size": ch["size"], "tasks": ch["tasks"]} for ch in chains
+    ]
     covered = {(m["attach"], m["join"]) for m in merges}
     for x in sorted(noncc):
         for j in sorted({s for s, _, _ in net.succ[x] if s in cc_set}):
@@ -531,12 +543,13 @@ def build_schedule(network: Network, title="CCPM schedule",
                         start[m] = s
                         fin[m] = s + dur[m]
                     break
-            merges.append(dict(attach=x, join=j, size=size, tasks=closure))
+            merges.append({"attach": x, "join": j, "size": size, "tasks": closure})
 
     for mg in merges:
         mg["anchor"] = start[mg["join"]] if mg["join"] else last_cc_fin
-    buffered = [mg for mg in sorted(merges, key=lambda m: (m["anchor"], m["attach"]))
-                if mg["anchor"] - fin[mg["attach"]] >= 1]
+    buffered = [
+        mg for mg in sorted(merges, key=lambda m: (m["anchor"], m["attach"])) if mg["anchor"] - fin[mg["attach"]] >= 1
+    ]
     # No room for a buffer: never emit a zero-length one - flag the merge.
     unprotected = [mg for mg in merges if mg not in buffered]
 
@@ -554,47 +567,88 @@ def build_schedule(network: Network, title="CCPM schedule",
 
     # ---- emit schedule.csv ----
     def out_preds(tid, base):
-        toks = [t for t in (base or "").replace(";", " ").replace(",", " ").split()
-                if not (LINK_RE.match(t) and LINK_RE.match(t).group("id") in reroute.get(tid, ()))]
+        toks = [
+            t
+            for t in (base or "").replace(";", " ").replace(",", " ").split()
+            if not (LINK_RE.match(t) and LINK_RE.match(t).group("id") in reroute.get(tid, ()))
+        ]
         return ";".join(toks + merge_links.get(tid, []))
 
     rows = []
     for i in sorted(ids, key=lambda i: (start[i], fin[i], i)):
-        rows.append(dict(id=i, name=net.T[i]["name"], type="task",
-                         chain="critical" if i in cc_set else chain_label.get(i, "none"),
-                         start=start[i], finish=fin[i], duration=dur[i],
-                         realistic_duration=net.T[i]["realistic"],
-                         resource_ids=";".join(net.T[i]["res"]),
-                         predecessor_ids=out_preds(i, net.T[i]["predstr"]),
-                         url=net.T[i]["url"]))
+        rows.append(
+            {
+                "id": i,
+                "name": net.T[i]["name"],
+                "type": "task",
+                "chain": "critical" if i in cc_set else chain_label.get(i, "none"),
+                "start": start[i],
+                "finish": fin[i],
+                "duration": dur[i],
+                "realistic_duration": net.T[i]["realistic"],
+                "resource_ids": ";".join(net.T[i]["res"]),
+                "predecessor_ids": out_preds(i, net.T[i]["predstr"]),
+                "url": net.T[i]["url"],
+            }
+        )
     for mg in buffered:
         f0 = fin[mg["attach"]]
-        rows.append(dict(id=mg["id"], name=f"Feeding buffer {mg['id'][2:]}",
-                         type="feeding_buffer",
-                         chain=chain_label.get(mg["attach"], "none"),
-                         start=f0, finish=mg["anchor"], duration=mg["anchor"] - f0,
-                         resource_ids="", predecessor_ids=f"{mg['attach']}:FB", url=""))
+        rows.append(
+            {
+                "id": mg["id"],
+                "name": f"Feeding buffer {mg['id'][2:]}",
+                "type": "feeding_buffer",
+                "chain": chain_label.get(mg["attach"], "none"),
+                "start": f0,
+                "finish": mg["anchor"],
+                "duration": mg["anchor"] - f0,
+                "resource_ids": "",
+                "predecessor_ids": f"{mg['attach']}:FB",
+                "url": "",
+            }
+        )
     last_cc = max(cc, key=lambda i: fin[i])
     if finish_needed:
         # zero-duration milestone on the critical chain: end-running feeding
         # buffers merge here, and the project buffer hangs off it alone
-        rows.append(dict(id="FINISH", name="Finish", type="task",
-                         chain="critical", start=last_cc_fin, finish=last_cc_fin,
-                         duration=0, resource_ids="",
-                         predecessor_ids=out_preds("FINISH", last_cc), url=""))
+        rows.append(
+            {
+                "id": "FINISH",
+                "name": "Finish",
+                "type": "task",
+                "chain": "critical",
+                "start": last_cc_fin,
+                "finish": last_cc_fin,
+                "duration": 0,
+                "resource_ids": "",
+                "predecessor_ids": out_preds("FINISH", last_cc),
+                "url": "",
+            }
+        )
         pb_pred = "FINISH:PB"
     else:
         pb_pred = f"{last_cc}:PB"
-    rows.append(dict(id="PB", name="Project buffer", type="project_buffer",
-                     chain="critical", start=last_cc_fin,
-                     finish=last_cc_fin + pb_size, duration=pb_size,
-                     resource_ids="", predecessor_ids=pb_pred, url=""))
+    rows.append(
+        {
+            "id": "PB",
+            "name": "Project buffer",
+            "type": "project_buffer",
+            "chain": "critical",
+            "start": last_cc_fin,
+            "finish": last_cc_fin + pb_size,
+            "duration": pb_size,
+            "resource_ids": "",
+            "predecessor_ids": pb_pred,
+            "url": "",
+        }
+    )
     schedule = Schedule(rows=[ScheduleRow(**r) for r in rows])
 
     # ---- summary.md ----
     def link(i):
         n = f"{i} {net.T[i]['name']}"
         return f"[{n}]({net.T[i]['url']})" if net.T[i]["url"] else n
+
     promise = last_cc_fin + pb_size
 
     def derived_count(members):
@@ -602,18 +656,22 @@ def build_schedule(network: Network, title="CCPM schedule",
         return sum(1 for m in members if not net.T[m]["stated"])
 
     cc_derived = derived_count(cc)
-    L = [f"# {title} — CCPM schedule", "",
-         f"- **Critical chain**: {' → '.join(link(i) for i in cc)}",
-         f"- **Critical chain length**: {sum(dur[i] for i in cc)} working days"
-         f" (work finishes day {last_cc_fin})",
-         f"- **Project buffer**: {pb_size} days → **promised completion: day {promise}**",
-         f"- **Buffer sizing**: {BUFFER_METHOD_LABELS[method]}"
-         + (f" — {cc_derived} of {len(cc)} critical-chain tasks have "
-            f"derived (single-point) safety estimates" if cc_derived else ""),
-         ""]
+    L = [
+        f"# {title} — CCPM schedule",
+        "",
+        f"- **Critical chain**: {' → '.join(link(i) for i in cc)}",
+        f"- **Critical chain length**: {sum(dur[i] for i in cc)} working days (work finishes day {last_cc_fin})",
+        f"- **Project buffer**: {pb_size} days → **promised completion: day {promise}**",
+        f"- **Buffer sizing**: {BUFFER_METHOD_LABELS[method]}"
+        + (
+            f" — {cc_derived} of {len(cc)} critical-chain tasks have derived (single-point) safety estimates"
+            if cc_derived
+            else ""
+        ),
+        "",
+    ]
     if buffered:
-        L.append("| Feeding buffer | Protects | Size (days) "
-                 "| Derived estimates | Merges into |")
+        L.append("| Feeding buffer | Protects | Size (days) | Derived estimates | Merges into |")
         L.append("|---|---|---|---|---|")
         for mg in buffered:
             f0 = fin[mg["attach"]]
@@ -621,48 +679,65 @@ def build_schedule(network: Network, title="CCPM schedule",
             got = mg["anchor"] - f0
             # the chain couldn't shift far enough to fit the full buffer -
             # the achieved gap is all the protection this merge has
-            size_txt = (f"{got} (method wanted {mg['size']})"
-                        if got < mg["size"] else f"{got}")
-            L.append(f"| {mg['id']} | {' → '.join(link(m) for m in mg['tasks'])} "
-                     f"| {size_txt} "
-                     f"| {derived_count(mg['tasks'])} of {len(mg['tasks'])} "
-                     f"| start of {anchor} |")
+            size_txt = f"{got} (method wanted {mg['size']})" if got < mg["size"] else f"{got}"
+            L.append(
+                f"| {mg['id']} | {' → '.join(link(m) for m in mg['tasks'])} "
+                f"| {size_txt} "
+                f"| {derived_count(mg['tasks'])} of {len(mg['tasks'])} "
+                f"| start of {anchor} |"
+            )
         L.append("")
     for mg in unprotected:
         where = link(mg["join"]) if mg["join"] else "the project end"
-        L.append(f"**Warning**: the merge of {' → '.join(link(m) for m in mg['tasks'])} "
-                 f"into {where} has no room for a feeding buffer — that path is "
-                 f"effectively critical. Watch it as closely as the critical chain.")
+        L.append(
+            f"**Warning**: the merge of {' → '.join(link(m) for m in mg['tasks'])} "
+            f"into {where} has no room for a feeding buffer — that path is "
+            f"effectively critical. Watch it as closely as the critical chain."
+        )
         L.append("")
     if net.has_calendar:
-        L.append("Resource availability from `calendar.csv` is honored: tasks are "
-                 "placed contiguously around outage windows (grey blocks in the "
-                 "Gantt utilization panel), never split across them.")
+        L.append(
+            "Resource availability from `calendar.csv` is honored: tasks are "
+            "placed contiguously around outage windows (grey blocks in the "
+            "Gantt utilization panel), never split across them."
+        )
         L.append("")
-    L.append("Durations are optimal (padding-free) estimates; overruns are expected roughly "
-             "half the time and consume buffer — the promise date only moves if "
-             "a buffer runs dry. Work the critical chain relay-runner style: "
-             "hand off immediately, no multitasking.")
+    L.append(
+        "Durations are optimal (padding-free) estimates; overruns are expected roughly "
+        "half the time and consume buffer — the promise date only moves if "
+        "a buffer runs dry. Work the critical chain relay-runner style: "
+        "hand off immediately, no multitasking."
+    )
 
-    stats = BuildStats(deadline=T0, critical_chain=list(cc),
-                       critical_chain_length=sum(dur[i] for i in cc),
-                       project_buffer=pb_size, promise_day=promise,
-                       merges=len(merges), buffered=len(buffered),
-                       unprotected=len(unprotected),
-                       finish_milestone=finish_needed,
-                       buffer_method=method)
-    return BuildResult(schedule=schedule, summary_markdown="\n".join(L) + "\n",
-                       title=title, stats=stats)
+    stats = BuildStats(
+        deadline=T0,
+        critical_chain=list(cc),
+        critical_chain_length=sum(dur[i] for i in cc),
+        project_buffer=pb_size,
+        promise_day=promise,
+        merges=len(merges),
+        buffered=len(buffered),
+        unprotected=len(unprotected),
+        finish_milestone=finish_needed,
+        buffer_method=method,
+    )
+    return BuildResult(
+        schedule=schedule,
+        summary_markdown="\n".join(L) + "\n",
+        title=title,
+        stats=stats,
+    )
 
 
-def main(tasks_path, resources_path, calendar_path, out_dir, title,
-         buffer_method=None):
+def main(tasks_path, resources_path, calendar_path, out_dir, title, buffer_method=None):
     try:
         network = io.load_network(tasks_path, resources_path, calendar_path)
         result = build_schedule(network, title, buffer_method=buffer_method)
     except CcpmError as e:
-        print(f"error: {e} — run the validator (ccpm_scheduler.validate) "
-              f"for a full report", file=sys.stderr)
+        print(
+            f"error: {e} — run the validator (ccpm_scheduler.validate) for a full report",
+            file=sys.stderr,
+        )
         sys.exit(1)
     io.write_build_outputs(result, out_dir)
     print(result.stats.status_line(result.title))
@@ -672,13 +747,21 @@ if __name__ == "__main__":
     argv = sys.argv
     calendar_path, out_dir, title, buffer_method = None, ".", "CCPM schedule", None
     if "--calendar" in argv:
-        i = argv.index("--calendar"); calendar_path = argv[i + 1]; del argv[i:i + 2]
+        i = argv.index("--calendar")
+        calendar_path = argv[i + 1]
+        del argv[i : i + 2]
     if "--out-dir" in argv:
-        i = argv.index("--out-dir"); out_dir = argv[i + 1]; del argv[i:i + 2]
+        i = argv.index("--out-dir")
+        out_dir = argv[i + 1]
+        del argv[i : i + 2]
     if "--title" in argv:
-        i = argv.index("--title"); title = argv[i + 1]; del argv[i:i + 2]
+        i = argv.index("--title")
+        title = argv[i + 1]
+        del argv[i : i + 2]
     if "--buffer-method" in argv:
-        i = argv.index("--buffer-method"); buffer_method = argv[i + 1]; del argv[i:i + 2]
+        i = argv.index("--buffer-method")
+        buffer_method = argv[i + 1]
+        del argv[i : i + 2]
     if len(argv) != 3:
         print(__doc__)
         sys.exit(2)

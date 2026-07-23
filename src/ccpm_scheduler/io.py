@@ -30,6 +30,7 @@ JSON exchange format (network_from_json / network_to_json):
 be numbers in JSON; they are coerced to strings. Loading is lenient — bad
 numbers etc. are kept raw for validate_network to report as issues.
 """
+
 from __future__ import annotations
 
 import csv
@@ -37,15 +38,23 @@ import json
 import os
 import re
 
-from .model import (Link, Task, Resource, CalendarWindow, Network, Issue,
-                    WARNING, Schedule, ScheduleRow, SCHEDULE_COLUMNS)
+from .model import (
+    SCHEDULE_COLUMNS,
+    WARNING,
+    CalendarWindow,
+    Issue,
+    Link,
+    Network,
+    Resource,
+    Schedule,
+    ScheduleRow,
+    Task,
+)
 
 # input links: FS/SS/FF/SF only — buffer types are output-only
-INPUT_LINK_RE = re.compile(
-    r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF))?(?P<lag>[+-]\d+)?$", re.I)
+INPUT_LINK_RE = re.compile(r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF))?(?P<lag>[+-]\d+)?$", re.I)
 # schedule rows additionally use :PB / :FB buffer attachments
-SCHED_LINK_RE = re.compile(
-    r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF|PB|FB))?(?P<lag>[+-]\d+)?$", re.I)
+SCHED_LINK_RE = re.compile(r"^(?P<id>[^:+\s]+)(?::(?P<type>FS|SS|FF|SF|PB|FB))?(?P<lag>[+-]\d+)?$", re.I)
 
 INPUT_LINK_TYPES = ("FS", "SS", "FF", "SF")
 
@@ -61,15 +70,25 @@ def iter_link_tokens(s, buffer_links=False):
     out = []
     for tok in split_tokens(s):
         m = rx.match(tok)
-        out.append((tok, Link(m.group("id"), (m.group("type") or "FS").upper(),
-                              int(m.group("lag") or 0)) if m else None))
+        out.append(
+            (
+                tok,
+                Link(
+                    m.group("id"),
+                    (m.group("type") or "FS").upper(),
+                    int(m.group("lag") or 0),
+                )
+                if m
+                else None,
+            )
+        )
     return out
 
 
 def parse_links(s, buffer_links=False):
     """Parse link notation, silently skipping malformed tokens (validation
     reports them; the engines just ignore them, as they always have)."""
-    return [l for _, l in iter_link_tokens(s, buffer_links) if l is not None]
+    return [lnk for _, lnk in iter_link_tokens(s, buffer_links) if lnk is not None]
 
 
 def parse_number(raw):
@@ -108,30 +127,38 @@ def _read_csv(path):
 
 # ---------------------------------------------------------------- CSV input
 
+
 def _load_tasks(tasks_path):
     rows, cols = _read_csv(tasks_path)
     warnings = []
-    for legacy, current in [("predecessors", "predecessor_ids"),
-                            ("resources", "resource_ids")]:
+    for legacy, current in [
+        ("predecessors", "predecessor_ids"),
+        ("resources", "resource_ids"),
+    ]:
         if legacy in cols and current not in cols:
-            warnings.append(Issue(
-                "W_LEGACY_COLUMNS", WARNING,
-                f"tasks.csv uses legacy column '{legacy}' — rename to '{current}'"))
+            warnings.append(
+                Issue(
+                    "W_LEGACY_COLUMNS",
+                    WARNING,
+                    f"tasks.csv uses legacy column '{legacy}' — rename to '{current}'",
+                )
+            )
     tasks = []
     for t in rows:
         pred_str = _first(t, "predecessor_ids", "predecessors")
         pred_str = "" if pred_str is None else pred_str
-        tasks.append(Task(
-            id=t["id"],
-            name=t.get("name"),
-            realistic_duration=parse_number(
-                _first(t, "realistic_duration", "duration_safe", "duration")),
-            optimal_duration=parse_number(
-                _first(t, "optimal_duration", "duration_aggressive")),
-            links=parse_links(pred_str),
-            resource_ids=split_tokens(_first(t, "resource_ids", "resources") or ""),
-            url=t.get("url", "") or "",
-            pred_str=pred_str))
+        tasks.append(
+            Task(
+                id=t["id"],
+                name=t.get("name"),
+                realistic_duration=parse_number(_first(t, "realistic_duration", "duration_safe", "duration")),
+                optimal_duration=parse_number(_first(t, "optimal_duration", "duration_aggressive")),
+                links=parse_links(pred_str),
+                resource_ids=split_tokens(_first(t, "resource_ids", "resources") or ""),
+                url=t.get("url", "") or "",
+                pred_str=pred_str,
+            )
+        )
     return tasks, warnings
 
 
@@ -151,22 +178,31 @@ def load_network(tasks_path, resources_path, calendar_path=None) -> Network:
 
 
 def load_resources(path) -> list[Resource]:
-    return [Resource(id=r["id"], name=r.get("name"),
-                     capacity=1 if r.get("capacity") in (None, "")
-                     else parse_number(r.get("capacity")),
-                     url=r.get("url", "") or "")
-            for r in _read_csv(path)[0]]
+    return [
+        Resource(
+            id=r["id"],
+            name=r.get("name"),
+            capacity=1 if r.get("capacity") in (None, "") else parse_number(r.get("capacity")),
+            url=r.get("url", "") or "",
+        )
+        for r in _read_csv(path)[0]
+    ]
 
 
 def load_calendar(path) -> list[CalendarWindow]:
-    return [CalendarWindow(resource_id=c.get("resource_id", "") or "",
-                           start=parse_number(c.get("from")),
-                           end=parse_number(c.get("to")),
-                           capacity=parse_number(c.get("capacity")))
-            for c in _read_csv(path)[0]]
+    return [
+        CalendarWindow(
+            resource_id=c.get("resource_id", "") or "",
+            start=parse_number(c.get("from")),
+            end=parse_number(c.get("to")),
+            capacity=parse_number(c.get("capacity")),
+        )
+        for c in _read_csv(path)[0]
+    ]
 
 
 # ---------------------------------------------------------------- JSON
+
 
 def network_from_json(data) -> Network:
     if isinstance(data, str):
@@ -193,11 +229,8 @@ def network_from_json(data) -> Network:
                 else:
                     ltype = (item.get("type") or "FS").upper()
                     if ltype not in INPUT_LINK_TYPES:
-                        raise ValueError(
-                            f"task {tid}: link type {ltype!r} not one of "
-                            f"{'/'.join(INPUT_LINK_TYPES)}")
-                    links.append(Link(str(item["id"]), ltype,
-                                      int(item.get("lag") or 0)))
+                        raise ValueError(f"task {tid}: link type {ltype!r} not one of {'/'.join(INPUT_LINK_TYPES)}")
+                    links.append(Link(str(item["id"]), ltype, int(item.get("lag") or 0)))
 
         res = _first(t, "resources", "resource_ids")
         allocations = None
@@ -211,29 +244,40 @@ def network_from_json(data) -> Network:
         else:
             resource_ids = [str(x) for x in res]
 
-        net.tasks.append(Task(
-            id=tid, name=t.get("name"),
-            realistic_duration=parse_number(
-                _first(t, "realistic_duration", "duration_safe", "duration")),
-            optimal_duration=parse_number(
-                _first(t, "optimal_duration", "duration_aggressive")),
-            links=links, resource_ids=resource_ids,
-            url=t.get("url", "") or "",
-            allocations=allocations, pred_str=pred_str))
+        net.tasks.append(
+            Task(
+                id=tid,
+                name=t.get("name"),
+                realistic_duration=parse_number(_first(t, "realistic_duration", "duration_safe", "duration")),
+                optimal_duration=parse_number(_first(t, "optimal_duration", "duration_aggressive")),
+                links=links,
+                resource_ids=resource_ids,
+                url=t.get("url", "") or "",
+                allocations=allocations,
+                pred_str=pred_str,
+            )
+        )
 
     for r in data.get("resources", []):
         raw_cap = r.get("capacity")
-        net.resources.append(Resource(
-            id=str(r["id"]), name=r.get("name"),
-            capacity=1 if raw_cap in (None, "") else parse_number(raw_cap),
-            url=r.get("url", "") or ""))
+        net.resources.append(
+            Resource(
+                id=str(r["id"]),
+                name=r.get("name"),
+                capacity=1 if raw_cap in (None, "") else parse_number(raw_cap),
+                url=r.get("url", "") or "",
+            )
+        )
 
     for c in data.get("calendar", []):
-        net.calendar.append(CalendarWindow(
-            resource_id=str(c["resource_id"]),
-            start=parse_number(c.get("from")),
-            end=parse_number(c.get("to")),
-            capacity=parse_number(c.get("capacity"))))
+        net.calendar.append(
+            CalendarWindow(
+                resource_id=str(c["resource_id"]),
+                start=parse_number(c.get("from")),
+                end=parse_number(c.get("to")),
+                capacity=parse_number(c.get("capacity")),
+            )
+        )
     return net
 
 
@@ -242,58 +286,82 @@ def network_to_json(net: Network) -> dict:
     if net.buffer_method:
         out["buffer_method"] = net.buffer_method
     for t in net.tasks:
-        d = {"id": t.id, "name": t.name,
-             "realistic_duration": t.realistic_duration,
-             "optimal_duration": t.optimal_duration,
-             "predecessors": t.predecessor_notation(),
-             "resources": list(t.resource_ids),
-             "url": t.url}
+        d = {
+            "id": t.id,
+            "name": t.name,
+            "realistic_duration": t.realistic_duration,
+            "optimal_duration": t.optimal_duration,
+            "predecessors": t.predecessor_notation(),
+            "resources": list(t.resource_ids),
+            "url": t.url,
+        }
         if t.allocations is not None:
             d["resources"] = dict(t.allocations)
         out["tasks"].append(d)
     for r in net.resources:
-        out["resources"].append({"id": r.id, "name": r.name,
-                                 "capacity": r.capacity, "url": r.url})
+        out["resources"].append({"id": r.id, "name": r.name, "capacity": r.capacity, "url": r.url})
     if net.has_calendar or net.calendar:
-        out["calendar"] = [{"resource_id": w.resource_id, "from": w.start,
-                            "to": w.end, "capacity": w.capacity}
-                           for w in net.calendar]
+        out["calendar"] = [
+            {
+                "resource_id": w.resource_id,
+                "from": w.start,
+                "to": w.end,
+                "capacity": w.capacity,
+            }
+            for w in net.calendar
+        ]
     return out
 
 
 # ---------------------------------------------------------------- schedules
 
+
 def load_schedule(path) -> Schedule:
     rows, _ = _read_csv(path)
-    return Schedule(rows=[ScheduleRow(
-        id=r["id"], name=r.get("name", "") or "",
-        type=r.get("type", "task") or "task",
-        chain=r.get("chain", "none") or "none",
-        start=int(r["start"]), finish=int(r["finish"]),
-        duration=int(r["duration"]),
-        realistic_duration=(int(r["realistic_duration"])
-                            if r.get("realistic_duration") else None),
-        resource_ids=_first(r, "resource_ids", "resources") or "",
-        predecessor_ids=_first(r, "predecessor_ids", "predecessors") or "",
-        url=r.get("url", "") or "") for r in rows])
+    return Schedule(
+        rows=[
+            ScheduleRow(
+                id=r["id"],
+                name=r.get("name", "") or "",
+                type=r.get("type", "task") or "task",
+                chain=r.get("chain", "none") or "none",
+                start=int(r["start"]),
+                finish=int(r["finish"]),
+                duration=int(r["duration"]),
+                realistic_duration=(int(r["realistic_duration"]) if r.get("realistic_duration") else None),
+                resource_ids=_first(r, "resource_ids", "resources") or "",
+                predecessor_ids=_first(r, "predecessor_ids", "predecessors") or "",
+                url=r.get("url", "") or "",
+            )
+            for r in rows
+        ]
+    )
 
 
 def schedule_from_json(data) -> Schedule:
     if isinstance(data, str):
         data = json.loads(data)
     rows = data["rows"] if isinstance(data, dict) else data
-    return Schedule(rows=[ScheduleRow(
-        id=str(r["id"]), name=r.get("name", "") or "",
-        type=r.get("type", "task") or "task",
-        chain=r.get("chain", "none") or "none",
-        start=int(r["start"]), finish=int(r["finish"]),
-        duration=int(r["duration"]),
-        realistic_duration=(int(r["realistic_duration"])
-                            if r.get("realistic_duration") not in (None, "")
-                            else None),
-        resource_ids=r.get("resource_ids", "") or "",
-        predecessor_ids=_first(r, "predecessor_ids", "predecessors") or "",
-        url=r.get("url", "") or "") for r in rows])
+    return Schedule(
+        rows=[
+            ScheduleRow(
+                id=str(r["id"]),
+                name=r.get("name", "") or "",
+                type=r.get("type", "task") or "task",
+                chain=r.get("chain", "none") or "none",
+                start=int(r["start"]),
+                finish=int(r["finish"]),
+                duration=int(r["duration"]),
+                realistic_duration=(
+                    int(r["realistic_duration"]) if r.get("realistic_duration") not in (None, "") else None
+                ),
+                resource_ids=r.get("resource_ids", "") or "",
+                predecessor_ids=_first(r, "predecessor_ids", "predecessors") or "",
+                url=r.get("url", "") or "",
+            )
+            for r in rows
+        ]
+    )
 
 
 def write_schedule_csv(schedule: Schedule, path):

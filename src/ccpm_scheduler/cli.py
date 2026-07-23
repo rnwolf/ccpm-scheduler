@@ -24,6 +24,7 @@ Examples:
     ccpm-scheduler plot plan/schedule.csv plan/gantt.png --resources resources.csv
     ccpm-scheduler schema network
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,13 +32,14 @@ import dataclasses
 import json
 import os
 import sys
+from pathlib import Path
 
 from . import __version__, io
 from .build import build_schedule
 from .check import check_schedule
-from .model import CcpmError, BUFFER_METHODS
+from .model import BUFFER_METHODS, CcpmError
 from .schema import SCHEMAS
-from .validate import validate_network, report_lines
+from .validate import report_lines, validate_network
 
 
 def _fail_usage(parser, message):
@@ -49,21 +51,20 @@ def _read_network(parser, inputs, calendar):
     try:
         if len(inputs) == 1:
             if calendar:
-                _fail_usage(parser, "--calendar applies to CSV input only; "
-                                    "put calendar windows in the JSON document")
+                _fail_usage(
+                    parser,
+                    "--calendar applies to CSV input only; put calendar windows in the JSON document",
+                )
             src = inputs[0]
-            text = sys.stdin.read() if src == "-" else open(
-                src, encoding="utf-8").read()
+            text = sys.stdin.read() if src == "-" else Path(src).read_text(encoding="utf-8")
             return io.network_from_json(text)
         if len(inputs) == 2:
             return io.load_network(inputs[0], inputs[1], calendar)
         if len(inputs) == 3:
             if calendar:
-                _fail_usage(parser, "calendar given twice (positional and "
-                                    "--calendar)")
+                _fail_usage(parser, "calendar given twice (positional and --calendar)")
             return io.load_network(inputs[0], inputs[1], inputs[2])
-        _fail_usage(parser, "expected NETWORK.json | - | TASKS.csv "
-                            "RESOURCES.csv [CALENDAR.csv]")
+        _fail_usage(parser, "expected NETWORK.json | - | TASKS.csv RESOURCES.csv [CALENDAR.csv]")
     except OSError as e:
         _fail_usage(parser, f"cannot read input: {e}")
     except (json.JSONDecodeError, ValueError) as e:
@@ -83,6 +84,7 @@ def _emit(data):
 
 
 # ------------------------------------------------------------- subcommands
+
 
 def cmd_validate(parser, args):
     net = _read_network(parser, args.inputs, args.calendar)
@@ -106,25 +108,29 @@ def cmd_build(parser, args):
             print("\n".join(lines))
         return 1
     try:
-        result = build_schedule(net, args.title,
-                                buffer_method=args.buffer_method)
+        result = build_schedule(net, args.title, buffer_method=args.buffer_method)
     except CcpmError as e:
         if args.json:
-            _emit({"ok": False, "error": {"code": "E_UNSCHEDULABLE",
-                                          "message": str(e)}})
+            _emit({"ok": False, "error": {"code": "E_UNSCHEDULABLE", "message": str(e)}})
         else:
             print(f"error: {e}", file=sys.stderr)
         return 1
     io.write_build_outputs(result, args.out_dir)
-    files = {"schedule": os.path.join(args.out_dir, "schedule.csv"),
-             "summary": os.path.join(args.out_dir, "summary.md")}
+    files = {
+        "schedule": os.path.join(args.out_dir, "schedule.csv"),
+        "summary": os.path.join(args.out_dir, "summary.md"),
+    }
     if args.json:
-        _emit({"ok": True, "title": result.title,
-               "stats": dataclasses.asdict(result.stats),
-               "files": files,
-               "warnings": [w.to_json()
-                            for w in net.io_warnings + rep.warnings],
-               "schedule": result.schedule.to_json()})
+        _emit(
+            {
+                "ok": True,
+                "title": result.title,
+                "stats": dataclasses.asdict(result.stats),
+                "files": files,
+                "warnings": [w.to_json() for w in net.io_warnings + rep.warnings],
+                "schedule": result.schedule.to_json(),
+            }
+        )
     else:
         for w in net.io_warnings + rep.warnings:
             print(f"  warning: {w.message}", file=sys.stderr)
@@ -153,17 +159,23 @@ def cmd_check(parser, args):
 
 def cmd_plot(parser, args):
     from .plot import plot_schedule  # lazy: pulls in matplotlib
+
     try:
         schedule = io.load_schedule(args.schedule)
         resources = io.load_resources(args.resources) if args.resources else None
         calendar = io.load_calendar(args.calendar) if args.calendar else None
     except OSError as e:
         _fail_usage(parser, f"cannot read input: {e}")
-    plot_schedule(schedule, args.out, title=args.title,
-                  resources=resources, calendar=calendar,
-                  show_util=not args.no_utilization,
-                  show_links=not args.no_links,
-                  critical_label=args.critical_label)
+    plot_schedule(
+        schedule,
+        args.out,
+        title=args.title,
+        resources=resources,
+        calendar=calendar,
+        show_util=not args.no_utilization,
+        show_links=not args.no_links,
+        critical_label=args.critical_label,
+    )
     if args.json:
         _emit({"ok": True, "wrote": args.out})
     else:
@@ -173,13 +185,19 @@ def cmd_plot(parser, args):
 
 def cmd_graph(parser, args):
     from .graph import write_network_html
+
     try:
         schedule = io.load_schedule(args.schedule)
         tasks = io.load_tasks(args.tasks) if args.tasks else None
     except OSError as e:
         _fail_usage(parser, f"cannot read input: {e}")
-    write_network_html(schedule, args.out, title=args.title,
-                       critical_label=args.critical_label, tasks=tasks)
+    write_network_html(
+        schedule,
+        args.out,
+        title=args.title,
+        critical_label=args.critical_label,
+        tasks=tasks,
+    )
     if args.json:
         _emit({"ok": True, "wrote": args.out})
     else:
@@ -194,123 +212,169 @@ def cmd_schema(parser, args):
 
 # ------------------------------------------------------------- parser
 
+
 def _add_network_inputs(sub):
-    sub.add_argument("inputs", nargs="+", metavar="INPUT",
-                     help="NETWORK.json | - (JSON on stdin) | "
-                          "TASKS.csv RESOURCES.csv [CALENDAR.csv]")
-    sub.add_argument("--calendar", metavar="CALENDAR.csv",
-                     help="resource availability overrides "
-                          "(resource_id, from, to, capacity on [from, to))")
+    sub.add_argument(
+        "inputs",
+        nargs="+",
+        metavar="INPUT",
+        help="NETWORK.json | - (JSON on stdin) | TASKS.csv RESOURCES.csv [CALENDAR.csv]",
+    )
+    sub.add_argument(
+        "--calendar",
+        metavar="CALENDAR.csv",
+        help="resource availability overrides (resource_id, from, to, capacity on [from, to))",
+    )
 
 
 def build_parser():
     p = argparse.ArgumentParser(
         prog="ccpm-scheduler",
         description="Deterministic Critical Chain Project Management (CCPM) "
-                    "scheduler: validate a project network, build a "
-                    "resource-leveled buffered schedule, verify it, and plot "
-                    "a buffer-aware Gantt chart.",
+        "scheduler: validate a project network, build a "
+        "resource-leveled buffered schedule, verify it, and plot "
+        "a buffer-aware Gantt chart.",
         epilog="Exit codes: 0 = ok, 1 = problems found (report emitted), "
-               "2 = usage error. Use --json for machine-readable output; "
-               "`ccpm-scheduler schema network` describes the JSON input "
-               "format.")
-    p.add_argument("--version", action="version",
-                   version=f"ccpm-scheduler {__version__}")
+        "2 = usage error. Use --json for machine-readable output; "
+        "`ccpm-scheduler schema network` describes the JSON input "
+        "format.",
+    )
+    p.add_argument("--version", action="version", version=f"ccpm-scheduler {__version__}")
     subs = p.add_subparsers(dest="command", required=True)
 
     sp = subs.add_parser(
-        "validate", help="check a project network before scheduling",
+        "validate",
+        help="check a project network before scheduling",
         description="Validate the network: ids, durations, dependency links, "
-                    "cycles, resources, calendar. Exit 0 = schedulable "
-                    "(warnings allowed), 1 = errors (each with a stable "
-                    "issue code in --json mode).")
+        "cycles, resources, calendar. Exit 0 = schedulable "
+        "(warnings allowed), 1 = errors (each with a stable "
+        "issue code in --json mode).",
+    )
     _add_network_inputs(sp)
-    sp.add_argument("--json", action="store_true",
-                    help="machine-readable report on stdout")
+    sp.add_argument("--json", action="store_true", help="machine-readable report on stdout")
     sp.set_defaults(func=cmd_validate)
 
     sp = subs.add_parser(
-        "build", help="build the CCPM schedule (validates first)",
+        "build",
+        help="build the CCPM schedule (validates first)",
         description="Validate, then build the resource-leveled, buffered "
-                    "schedule. Writes schedule.csv and summary.md to "
-                    "--out-dir. Deterministic: the same input always yields "
-                    "byte-identical output.")
+        "schedule. Writes schedule.csv and summary.md to "
+        "--out-dir. Deterministic: the same input always yields "
+        "byte-identical output.",
+    )
     _add_network_inputs(sp)
-    sp.add_argument("--out-dir", default=".", metavar="DIR",
-                    help="where to write schedule.csv + summary.md "
-                         "(default: current directory)")
-    sp.add_argument("--title", default="CCPM schedule",
-                    help='project title used in outputs (default: "CCPM schedule")')
-    sp.add_argument("--buffer-method", choices=BUFFER_METHODS, default=None,
-                    help="buffer sizing method (default: cap; a JSON input's "
-                         "own buffer_method key is honored when this flag is "
-                         "omitted) — see docs/buffer-sizing.md")
-    sp.add_argument("--json", action="store_true",
-                    help="print stats, file paths, and the full schedule as JSON")
+    sp.add_argument(
+        "--out-dir",
+        default=".",
+        metavar="DIR",
+        help="where to write schedule.csv + summary.md (default: current directory)",
+    )
+    sp.add_argument(
+        "--title",
+        default="CCPM schedule",
+        help='project title used in outputs (default: "CCPM schedule")',
+    )
+    sp.add_argument(
+        "--buffer-method",
+        choices=BUFFER_METHODS,
+        default=None,
+        help="buffer sizing method (default: cap; a JSON input's "
+        "own buffer_method key is honored when this flag is "
+        "omitted) — see docs/buffer-sizing.md",
+    )
+    sp.add_argument(
+        "--json",
+        action="store_true",
+        help="print stats, file paths, and the full schedule as JSON",
+    )
     sp.set_defaults(func=cmd_build)
 
     sp = subs.add_parser(
-        "check", help="verify a schedule against its input network",
+        "check",
+        help="verify a schedule against its input network",
         description="Re-verify a produced schedule: precedence, resource "
-                    "capacity (calendar-aware), buffer placement and link "
-                    "discipline, chain continuity.")
+        "capacity (calendar-aware), buffer placement and link "
+        "discipline, chain continuity.",
+    )
     sp.add_argument("schedule", metavar="SCHEDULE.csv")
     _add_network_inputs(sp)
-    sp.add_argument("--json", action="store_true",
-                    help="machine-readable report on stdout")
+    sp.add_argument("--json", action="store_true", help="machine-readable report on stdout")
     sp.set_defaults(func=cmd_check)
 
     sp = subs.add_parser(
-        "plot", help="render a schedule as a Gantt chart PNG",
+        "plot",
+        help="render a schedule as a Gantt chart PNG",
         description="Buffer-aware Gantt chart with dependency arrows and a "
-                    "resource-utilization panel (red = over capacity, grey "
-                    "hatch = unavailable).")
+        "resource-utilization panel (red = over capacity, grey "
+        "hatch = unavailable).",
+    )
     sp.add_argument("schedule", metavar="SCHEDULE.csv")
     sp.add_argument("out", metavar="OUT.png")
-    sp.add_argument("--resources", metavar="RESOURCES.csv",
-                    help="real capacities for the utilization panel (default 1)")
-    sp.add_argument("--calendar", metavar="CALENDAR.csv",
-                    help="availability overrides, drawn as unavailable blocks")
+    sp.add_argument(
+        "--resources",
+        metavar="RESOURCES.csv",
+        help="real capacities for the utilization panel (default 1)",
+    )
+    sp.add_argument(
+        "--calendar",
+        metavar="CALENDAR.csv",
+        help="availability overrides, drawn as unavailable blocks",
+    )
     sp.add_argument("--title", default="CCPM Schedule")
-    sp.add_argument("--critical-label", default="Critical chain",
-                    help='legend label for critical bars (e.g. "Critical path" '
-                         "for a plain CPM chart)")
-    sp.add_argument("--no-utilization", action="store_true",
-                    help="omit the resource-utilization panel")
-    sp.add_argument("--no-links", action="store_true",
-                    help="omit dependency arrows")
-    sp.add_argument("--json", action="store_true",
-                    help="print {ok, wrote} as JSON")
+    sp.add_argument(
+        "--critical-label",
+        default="Critical chain",
+        help='legend label for critical bars (e.g. "Critical path" for a plain CPM chart)',
+    )
+    sp.add_argument(
+        "--no-utilization",
+        action="store_true",
+        help="omit the resource-utilization panel",
+    )
+    sp.add_argument("--no-links", action="store_true", help="omit dependency arrows")
+    sp.add_argument("--json", action="store_true", help="print {ok, wrote} as JSON")
     sp.set_defaults(func=cmd_plot)
 
     sp = subs.add_parser(
-        "graph", help="render a schedule as an interactive network-graph HTML",
+        "graph",
+        help="render a schedule as an interactive network-graph HTML",
         description="Standalone HTML dependency graph (vis-network via CDN, "
-                    "data embedded — no build step or server): open it in a "
-                    "browser to zoom, pan, drag nodes, and click a node to "
-                    "inspect task details. Complements the Gantt: the chart "
-                    "shows when, the graph shows why.")
+        "data embedded — no build step or server): open it in a "
+        "browser to zoom, pan, drag nodes, and click a node to "
+        "inspect task details. Complements the Gantt: the chart "
+        "shows when, the graph shows why.",
+    )
     sp.add_argument("schedule", metavar="SCHEDULE.csv")
     sp.add_argument("out", metavar="OUT.html")
-    sp.add_argument("--tasks", metavar="TASKS.csv",
-                    help="input tasks file — adds each task's realistic "
-                         "duration estimate to the tooltip and inspector "
-                         "(schedule.csv only carries the optimal duration)")
+    sp.add_argument(
+        "--tasks",
+        metavar="TASKS.csv",
+        help="input tasks file — adds each task's realistic "
+        "duration estimate to the tooltip and inspector "
+        "(schedule.csv only carries the optimal duration)",
+    )
     sp.add_argument("--title", default="CCPM Schedule")
-    sp.add_argument("--critical-label", default="Critical chain",
-                    help='legend label for critical nodes (e.g. "Critical '
-                         'path" for a plain CPM schedule)')
-    sp.add_argument("--json", action="store_true",
-                    help="print {ok, wrote} as JSON")
+    sp.add_argument(
+        "--critical-label",
+        default="Critical chain",
+        help='legend label for critical nodes (e.g. "Critical path" for a plain CPM schedule)',
+    )
+    sp.add_argument("--json", action="store_true", help="print {ok, wrote} as JSON")
     sp.set_defaults(func=cmd_graph)
 
     sp = subs.add_parser(
-        "schema", help="print a JSON Schema for the data contracts",
+        "schema",
+        help="print a JSON Schema for the data contracts",
         description="Print the JSON Schema describing the network input "
-                    "format, the schedule output, or the validation report.")
-    sp.add_argument("which", nargs="?", default="network",
-                    choices=sorted(SCHEMAS),
-                    help="which contract to describe (default: network)")
+        "format, the schedule output, or the validation report.",
+    )
+    sp.add_argument(
+        "which",
+        nargs="?",
+        default="network",
+        choices=sorted(SCHEMAS),
+        help="which contract to describe (default: network)",
+    )
     sp.set_defaults(func=cmd_schema)
     return p
 

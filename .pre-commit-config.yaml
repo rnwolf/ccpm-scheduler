@@ -1,0 +1,8 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22 # Use the latest stable ruff version
+    hooks:
+      - id: ruff-check
+        args: [--fix] # Automatically fixes eligible lint errors before committing
+      - id: ruff-format # Replaces Black for lightning-fast formatting
+

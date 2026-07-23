@@ -29,6 +29,7 @@ Changelog = "https://github.com/rnwolf/ccpm-scheduler/releases"
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.15.22",
     "zensical>=0.0.51",
 ]
 
@@ -41,3 +42,31 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ccpm_scheduler"]
+
+[tool.ruff]
+# Target Python 3.10 or newer
+target-version = "py310"
+
+# Allow lines to be up to 120 characters long
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # Pycodestyle style errors
+    "F",   # Pyflakes logic and error checks
+    "I",   # Isort import sorting
+    "UP",  # Pyupgrade modern syntax suggestions
+    "B",   # Flake8-bugbear logical trap prevention
+    "C4",  # Flake8-comprehensions better list/set/dict writing
+    "SIM", # Flake8-simplify code cleanups
+    "S",   # Flake8-bandit security checks
+    "PT",  # Flake8-pytest-style test optimization and consistency
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore security checks in test files to prevent false alarms
+"tests/**/*.py" = ["S"]
+
+[tool.ruff.lint.flake8-pytest-style]
+# Enforce a consistent format for pytest parametrize variable names
+parametrize-names-type = "csv"

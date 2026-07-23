@@ -33,41 +33,86 @@ The `ccpm-scheduler` CLI wraps all of this — see `ccpm-scheduler --help`.
 # Single-sourced from pyproject.toml via the installed package metadata, so
 # the runtime version can never drift from the published one again (0.4.0
 # shipped reporting 0.3.1 because this used to be a duplicated literal).
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 try:
     __version__ = _pkg_version("ccpm-scheduler")
 except PackageNotFoundError:  # running from a source tree without install
     __version__ = "0+unknown"
 
-from .model import (                                        # noqa: F401
-    CcpmError, Link, Task, Resource, CalendarWindow, Network,
-    Issue, ValidationReport, Schedule, ScheduleRow,
-    BuildResult, BuildStats, SCHEDULE_COLUMNS,
-    TYPE_TASK, TYPE_PROJECT_BUFFER, TYPE_FEEDING_BUFFER,
-    BUFFER_METHODS, DEFAULT_BUFFER_METHOD,
-)
-from .io import (                                           # noqa: F401
-    load_network, load_tasks, load_resources, load_calendar, load_schedule,
-    network_from_json, network_to_json, schedule_from_json,
-    write_schedule_csv, write_build_outputs,
-)
-from .validate import validate_network                      # noqa: F401
-from .build import build_schedule                           # noqa: F401
-from .check import check_schedule                           # noqa: F401
+from .build import build_schedule  # noqa: F401
+from .check import check_schedule  # noqa: F401
 from .graph import render_network_html, write_network_html  # noqa: F401
+from .io import (  # noqa: F401
+    load_calendar,
+    load_network,
+    load_resources,
+    load_schedule,
+    load_tasks,
+    network_from_json,
+    network_to_json,
+    schedule_from_json,
+    write_build_outputs,
+    write_schedule_csv,
+)
+from .model import (  # noqa: F401
+    BUFFER_METHODS,
+    DEFAULT_BUFFER_METHOD,
+    SCHEDULE_COLUMNS,
+    TYPE_FEEDING_BUFFER,
+    TYPE_PROJECT_BUFFER,
+    TYPE_TASK,
+    BuildResult,
+    BuildStats,
+    CalendarWindow,
+    CcpmError,
+    Issue,
+    Link,
+    Network,
+    Resource,
+    Schedule,
+    ScheduleRow,
+    Task,
+    ValidationReport,
+)
+from .validate import validate_network  # noqa: F401
 
 __all__ = [
-    "CcpmError", "Link", "Task", "Resource", "CalendarWindow", "Network",
-    "Issue", "ValidationReport", "Schedule", "ScheduleRow",
-    "BuildResult", "BuildStats", "SCHEDULE_COLUMNS",
-    "TYPE_TASK", "TYPE_PROJECT_BUFFER", "TYPE_FEEDING_BUFFER",
-    "BUFFER_METHODS", "DEFAULT_BUFFER_METHOD",
-    "load_network", "load_tasks", "load_resources", "load_calendar", "load_schedule",
-    "network_from_json", "network_to_json", "schedule_from_json",
-    "write_schedule_csv", "write_build_outputs",
-    "validate_network", "build_schedule", "check_schedule", "plot_schedule",
-    "render_network_html", "write_network_html",
+    "CcpmError",
+    "Link",
+    "Task",
+    "Resource",
+    "CalendarWindow",
+    "Network",
+    "Issue",
+    "ValidationReport",
+    "Schedule",
+    "ScheduleRow",
+    "BuildResult",
+    "BuildStats",
+    "SCHEDULE_COLUMNS",
+    "TYPE_TASK",
+    "TYPE_PROJECT_BUFFER",
+    "TYPE_FEEDING_BUFFER",
+    "BUFFER_METHODS",
+    "DEFAULT_BUFFER_METHOD",
+    "load_network",
+    "load_tasks",
+    "load_resources",
+    "load_calendar",
+    "load_schedule",
+    "network_from_json",
+    "network_to_json",
+    "schedule_from_json",
+    "write_schedule_csv",
+    "write_build_outputs",
+    "validate_network",
+    "build_schedule",
+    "check_schedule",
+    "plot_schedule",
+    "render_network_html",
+    "write_network_html",
     "__version__",
 ]
 
@@ -76,4 +121,5 @@ def plot_schedule(*args, **kwargs):
     """Lazy proxy for ccpm_scheduler.plot.plot_schedule — importing the real
     thing pulls in matplotlib, which library consumers may not need."""
     from .plot import plot_schedule as _plot
+
     return _plot(*args, **kwargs)

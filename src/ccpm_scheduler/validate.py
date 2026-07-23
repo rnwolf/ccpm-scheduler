@@ -32,6 +32,7 @@ anchors them to synthetic Start/Finish milestones.
 
 Exit code 0 = inputs valid (warnings allowed), 1 = errors found.
 """
+
 from __future__ import annotations
 
 import sys
@@ -60,26 +61,34 @@ def validate_network(net: Network) -> ValidationReport:
     for r in net.resources:
         rid = r.id
         if rid in caps:
-            rep.error("E_DUP_RESOURCE", f"duplicate resource id {rid}",
-                      resource_ids=[rid])
+            rep.error("E_DUP_RESOURCE", f"duplicate resource id {rid}", resource_ids=[rid])
         cap, why = _as_whole(r.capacity)
         if why == "fractional":
-            rep.error("E_FRACTIONAL_CAPACITY",
-                      f"resource {rid}: fractional capacity {r.capacity!r} is not "
-                      f"supported in v1 — use whole units and model partial "
-                      f"availability with the calendar", resource_ids=[rid])
+            rep.error(
+                "E_FRACTIONAL_CAPACITY",
+                f"resource {rid}: fractional capacity {r.capacity!r} is not "
+                f"supported in v1 — use whole units and model partial "
+                f"availability with the calendar",
+                resource_ids=[rid],
+            )
         elif why == "bad":
-            rep.error("E_BAD_CAPACITY",
-                      f"resource {rid}: capacity must be a number (got {r.capacity!r})",
-                      resource_ids=[rid])
+            rep.error(
+                "E_BAD_CAPACITY",
+                f"resource {rid}: capacity must be a number (got {r.capacity!r})",
+                resource_ids=[rid],
+            )
         elif cap < 1:
-            rep.error("E_BAD_CAPACITY",
-                      f"resource {rid}: capacity must be >= 1 (got {cap})",
-                      resource_ids=[rid])
+            rep.error(
+                "E_BAD_CAPACITY",
+                f"resource {rid}: capacity must be >= 1 (got {cap})",
+                resource_ids=[rid],
+            )
         elif cap > 1:
-            rep.warning("W_CAPACITY_GT1",
-                        f"resource {rid}: capacity {cap} > 1 is unusual in CCPM",
-                        resource_ids=[rid])
+            rep.warning(
+                "W_CAPACITY_GT1",
+                f"resource {rid}: capacity {cap} > 1 is unusual in CCPM",
+                resource_ids=[rid],
+            )
         caps[rid] = cap if cap is not None else 1
 
     # ---- tasks ----
@@ -90,53 +99,72 @@ def validate_network(net: Network) -> ValidationReport:
         ids.add(t.id)
     for t in net.tasks:
         tid = t.id
-        d_raw = t.optimal_duration if t.optimal_duration is not None \
-            else t.realistic_duration
+        d_raw = t.optimal_duration if t.optimal_duration is not None else t.realistic_duration
         d, why = _as_whole(d_raw)
         if why == "fractional":
-            rep.error("E_FRACTIONAL_DURATION",
-                      f"task {tid}: fractional duration {d_raw!r} is not supported "
-                      f"in v1 — durations are whole working days (round up)",
-                      task_ids=[tid])
+            rep.error(
+                "E_FRACTIONAL_DURATION",
+                f"task {tid}: fractional duration {d_raw!r} is not supported "
+                f"in v1 — durations are whole working days (round up)",
+                task_ids=[tid],
+            )
         elif why == "bad" or d < 1:
-            rep.error("E_BAD_DURATION",
-                      f"task {tid}: duration must be a positive number of days "
-                      f"(got {d_raw!r})", task_ids=[tid])
+            rep.error(
+                "E_BAD_DURATION",
+                f"task {tid}: duration must be a positive number of days (got {d_raw!r})",
+                task_ids=[tid],
+            )
         for rid, alloc in (t.allocations or {}).items():
             if alloc != 1:
-                rep.error("E_FRACTIONAL_ALLOCATION",
-                          f"task {tid}: allocation {alloc} of resource {rid} is not "
-                          f"supported in v1 — the scheduler assigns exactly one "
-                          f"whole unit of each resource per task (allocation "
-                          f"must be 1); split the task, or drop the allocation "
-                          f"to 1 and model extra capacity via the calendar",
-                          task_ids=[tid], resource_ids=[rid])
+                rep.error(
+                    "E_FRACTIONAL_ALLOCATION",
+                    f"task {tid}: allocation {alloc} of resource {rid} is not "
+                    f"supported in v1 — the scheduler assigns exactly one "
+                    f"whole unit of each resource per task (allocation "
+                    f"must be 1); split the task, or drop the allocation "
+                    f"to 1 and model extra capacity via the calendar",
+                    task_ids=[tid],
+                    resource_ids=[rid],
+                )
         links = []
         for tok, link in io.iter_link_tokens(t.predecessor_notation()):
             if link is None:
-                rep.error("E_MALFORMED_LINK",
-                          f"task {tid}: malformed dependency link {tok!r}",
-                          task_ids=[tid])
+                rep.error(
+                    "E_MALFORMED_LINK",
+                    f"task {tid}: malformed dependency link {tok!r}",
+                    task_ids=[tid],
+                )
                 continue
             if link.pred_id not in ids:
-                rep.error("E_UNKNOWN_PRED",
-                          f"task {tid}: unknown predecessor {link.pred_id}",
-                          task_ids=[tid, link.pred_id])
+                rep.error(
+                    "E_UNKNOWN_PRED",
+                    f"task {tid}: unknown predecessor {link.pred_id}",
+                    task_ids=[tid, link.pred_id],
+                )
             if link.type != "FS":
-                rep.warning("W_NON_FS_LINK",
-                            f"task {tid}: non-FS link {tok} (supported, but check "
-                            f"buffer sizing notes)", task_ids=[tid])
+                rep.warning(
+                    "W_NON_FS_LINK",
+                    f"task {tid}: non-FS link {tok} (supported, but check buffer sizing notes)",
+                    task_ids=[tid],
+                )
             links.append(link.pred_id)
         preds[tid] = links
         if not t.resource_ids:
-            rep.error("E_NO_RESOURCE",
-                      f"task {tid}: no resources assigned — a task without a "
-                      f"resource cannot contend for capacity and breaks critical "
-                      f"chain identification", task_ids=[tid])
+            rep.error(
+                "E_NO_RESOURCE",
+                f"task {tid}: no resources assigned — a task without a "
+                f"resource cannot contend for capacity and breaks critical "
+                f"chain identification",
+                task_ids=[tid],
+            )
         for rr in t.resource_ids:
             if rr not in caps:
-                rep.error("E_UNKNOWN_RESOURCE", f"task {tid}: unknown resource {rr}",
-                          task_ids=[tid], resource_ids=[rr])
+                rep.error(
+                    "E_UNKNOWN_RESOURCE",
+                    f"task {tid}: unknown resource {rr}",
+                    task_ids=[tid],
+                    resource_ids=[rr],
+                )
 
     # ---- cycles ----
     WHITE, GREY, BLACK = 0, 1, 2
@@ -149,10 +177,12 @@ def validate_network(net: Network) -> ValidationReport:
             if pid not in preds:
                 continue
             if color[pid] == GREY:
-                cyc = stack[stack.index(pid):] + [pid]
-                rep.error("E_CYCLE",
-                          "circular dependency: " + " -> ".join(reversed(cyc)),
-                          task_ids=cyc[:-1])
+                cyc = stack[stack.index(pid) :] + [pid]
+                rep.error(
+                    "E_CYCLE",
+                    "circular dependency: " + " -> ".join(reversed(cyc)),
+                    task_ids=cyc[:-1],
+                )
                 continue
             if color[pid] == WHITE:
                 dfs(pid)
@@ -171,29 +201,40 @@ def validate_network(net: Network) -> ValidationReport:
         hi, wh = _as_whole(w.end)
         cap, wc = _as_whole(w.capacity)
         if wl or wh or wc:
-            rep.error("E_CAL_BAD_ROW",
-                      f"calendar: bad row for resource {rid!r} — expected whole "
-                      f"numbers for from, to, capacity (got from={w.start!r}, "
-                      f"to={w.end!r}, capacity={w.capacity!r})",
-                      resource_ids=[rid])
+            rep.error(
+                "E_CAL_BAD_ROW",
+                f"calendar: bad row for resource {rid!r} — expected whole "
+                f"numbers for from, to, capacity (got from={w.start!r}, "
+                f"to={w.end!r}, capacity={w.capacity!r})",
+                resource_ids=[rid],
+            )
             continue
         if rid not in caps:
-            rep.error("E_CAL_UNKNOWN_RESOURCE", f"calendar: unknown resource {rid}",
-                      resource_ids=[rid])
+            rep.error(
+                "E_CAL_UNKNOWN_RESOURCE",
+                f"calendar: unknown resource {rid}",
+                resource_ids=[rid],
+            )
             continue
         if lo >= hi:
-            rep.error("E_CAL_EMPTY_RANGE",
-                      f"calendar: {rid} range [{lo},{hi}) is empty or inverted",
-                      resource_ids=[rid])
+            rep.error(
+                "E_CAL_EMPTY_RANGE",
+                f"calendar: {rid} range [{lo},{hi}) is empty or inverted",
+                resource_ids=[rid],
+            )
         if cap < 0:
-            rep.error("E_CAL_NEG_CAPACITY",
-                      f"calendar: {rid} capacity must be >= 0 (got {cap})",
-                      resource_ids=[rid])
+            rep.error(
+                "E_CAL_NEG_CAPACITY",
+                f"calendar: {rid} capacity must be >= 0 (got {cap})",
+                resource_ids=[rid],
+            )
         for plo, phi in seen[rid]:
             if lo < phi and plo < hi:
-                rep.error("E_CAL_OVERLAP",
-                          f"calendar: {rid} ranges [{plo},{phi}) and [{lo},{hi}) "
-                          f"overlap", resource_ids=[rid])
+                rep.error(
+                    "E_CAL_OVERLAP",
+                    f"calendar: {rid} ranges [{plo},{phi}) and [{lo},{hi}) overlap",
+                    resource_ids=[rid],
+                )
         seen[rid].append((lo, hi))
 
     # ---- structure ----

@@ -51,6 +51,7 @@ Checks (issue codes in brackets):
 
 Exit code 0 = valid, 1 = violations found (printed to stdout).
 """
+
 from __future__ import annotations
 
 import sys
@@ -61,7 +62,7 @@ from .model import Network, Schedule, ValidationReport, as_int
 
 
 def _parse_links(s):
-    return [(l.pred_id, l.type, l.lag) for l in io.parse_links(s, buffer_links=True)]
+    return [(lnk.pred_id, lnk.type, lnk.lag) for lnk in io.parse_links(s, buffer_links=True)]
 
 
 def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
@@ -74,37 +75,51 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
         try:
             resources[r.id] = as_int(r.capacity)
         except ValueError:
-            err("E_BAD_CAPACITY",
+            err(
+                "E_BAD_CAPACITY",
                 f"resource {r.id}: capacity is not a whole number ({r.capacity!r})",
-                resource_ids=[r.id])
+                resource_ids=[r.id],
+            )
             resources[r.id] = 1
 
     # 9. calendar overrides: resource -> [(from, to, capacity)]
     overrides = defaultdict(list)
     for w in network.calendar:
         try:
-            res, lo, hi, cap = (w.resource_id, as_int(w.start),
-                                as_int(w.end), as_int(w.capacity))
+            res, lo, hi, cap = (
+                w.resource_id,
+                as_int(w.start),
+                as_int(w.end),
+                as_int(w.capacity),
+            )
         except ValueError:
-            err("E_CAL_BAD_ROW",
-                f"calendar: bad row for resource {w.resource_id!r} — expected "
-                f"whole numbers for from, to, capacity",
-                resource_ids=[w.resource_id])
+            err(
+                "E_CAL_BAD_ROW",
+                f"calendar: bad row for resource {w.resource_id!r} — expected whole numbers for from, to, capacity",
+                resource_ids=[w.resource_id],
+            )
             continue
         if res not in resources:
-            err("E_CAL_UNKNOWN_RESOURCE", f"calendar: unknown resource {res}",
-                resource_ids=[res])
+            err(
+                "E_CAL_UNKNOWN_RESOURCE",
+                f"calendar: unknown resource {res}",
+                resource_ids=[res],
+            )
             continue
         if lo >= hi:
-            err("E_CAL_EMPTY_RANGE",
+            err(
+                "E_CAL_EMPTY_RANGE",
                 f"calendar: {res} range [{lo},{hi}) is empty or inverted",
-                resource_ids=[res])
+                resource_ids=[res],
+            )
             continue
         for plo, phi, _ in overrides[res]:
             if lo < phi and plo < hi:
-                err("E_CAL_OVERLAP",
+                err(
+                    "E_CAL_OVERLAP",
                     f"calendar: {res} ranges [{plo},{phi}) and [{lo},{hi}) overlap",
-                    resource_ids=[res])
+                    resource_ids=[res],
+                )
         overrides[res].append((lo, hi, cap))
 
     def cap_on(res, day):
@@ -122,23 +137,23 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
     # 1. coverage
     for tid in tasks:
         if tid not in rows:
-            err("E_MISSING_TASK", f"task {tid} missing from schedule",
-                task_ids=[tid])
+            err("E_MISSING_TASK", f"task {tid} missing from schedule", task_ids=[tid])
     # 2. arithmetic & 7. negative starts
     for r in sched:
         if r.finish != r.start + r.duration:
-            err("E_ARITHMETIC", f"{r.id}: finish != start + duration",
-                task_ids=[r.id])
+            err("E_ARITHMETIC", f"{r.id}: finish != start + duration", task_ids=[r.id])
         if r.start < 0:
-            err("E_NEG_START", f"{r.id}: negative start {r.start}",
-                task_ids=[r.id])
+            err("E_NEG_START", f"{r.id}: negative start {r.start}", task_ids=[r.id])
 
     # 3. precedence, by link type (prefer the schedule's own predecessors
     # column so buffers and normalized links are checked too)
     BOUNDS = {  # (pred attr, succ attr); PB/FB anchor like FS at plan time
-        "FS": ("finish", "start"), "SS": ("start", "start"),
-        "FF": ("finish", "finish"), "SF": ("start", "finish"),
-        "PB": ("finish", "start"), "FB": ("finish", "start"),
+        "FS": ("finish", "start"),
+        "SS": ("start", "start"),
+        "FF": ("finish", "finish"),
+        "SF": ("start", "finish"),
+        "PB": ("finish", "start"),
+        "FB": ("finish", "start"),
     }
     BUFFER_LINK = {"project_buffer": "PB", "feeding_buffer": "FB"}
     for tid, r in rows.items():
@@ -147,38 +162,54 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
             pred_spec = tasks[tid].predecessor_notation()
         for pid, ltype, lag in _parse_links(pred_spec or ""):
             if pid not in rows:
-                err("E_UNKNOWN_PRED", f"{tid}: unknown predecessor {pid}",
-                    task_ids=[tid, pid])
+                err(
+                    "E_UNKNOWN_PRED",
+                    f"{tid}: unknown predecessor {pid}",
+                    task_ids=[tid, pid],
+                )
                 continue
             pa, sa = BOUNDS[ltype]
             if getattr(rows[pid], pa) + lag > getattr(r, sa):
-                err("E_LINK_VIOLATION",
-                    f"{ltype} link violated: {pid}.{pa}={getattr(rows[pid], pa)}"
-                    f"{lag:+d} > {tid}.{sa}={getattr(r, sa)}",
-                    task_ids=[tid, pid])
+                err(
+                    "E_LINK_VIOLATION",
+                    f"{ltype} link violated: {pid}.{pa}={getattr(rows[pid], pa)}{lag:+d} > {tid}.{sa}={getattr(r, sa)}",
+                    task_ids=[tid, pid],
+                )
             # 8. buffer link discipline
             expected = BUFFER_LINK.get(r.type)
             pred_is_fb = rows[pid].type == "feeding_buffer"
             if expected and not pred_is_fb and ltype != expected:
-                err("E_BUFFER_LINK",
+                err(
+                    "E_BUFFER_LINK",
                     f"{tid}: buffer must attach via :{expected} link, got {ltype}",
-                    task_ids=[tid, pid])
+                    task_ids=[tid, pid],
+                )
             if pred_is_fb and ltype != "FB":
-                err("E_BUFFER_LINK",
+                err(
+                    "E_BUFFER_LINK",
                     f"{tid}: link from feeding buffer {pid} must use :FB, got {ltype}",
-                    task_ids=[tid, pid])
+                    task_ids=[tid, pid],
+                )
             if pred_is_fb and r.type != "task":
-                err("E_BUFFER_LINK",
+                err(
+                    "E_BUFFER_LINK",
                     f"{tid}: feeding buffer {pid} must merge into a critical-chain "
                     f"task, not a {r.type} — chains that run to the project end "
                     f"merge into a zero-duration Finish milestone",
-                    task_ids=[tid, pid])
+                    task_ids=[tid, pid],
+                )
             if ltype == "FB" and not (r.type == "feeding_buffer" or pred_is_fb):
-                err("E_BUFFER_LINK", f"{tid}: :FB link must involve a feeding buffer",
-                    task_ids=[tid, pid])
+                err(
+                    "E_BUFFER_LINK",
+                    f"{tid}: :FB link must involve a feeding buffer",
+                    task_ids=[tid, pid],
+                )
             if ltype == "PB" and r.type != "project_buffer":
-                err("E_BUFFER_LINK", f"{tid}: :PB link used on a non-project-buffer row",
-                    task_ids=[tid, pid])
+                err(
+                    "E_BUFFER_LINK",
+                    f"{tid}: :PB link used on a non-project-buffer row",
+                    task_ids=[tid, pid],
+                )
 
     # 4. resource capacity (day-by-day, calendar-aware)
     usage = defaultdict(lambda: defaultdict(int))  # resource -> day -> demand
@@ -187,8 +218,12 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
             continue
         for res in io.split_tokens(r.resource_ids):
             if res not in resources:
-                err("E_UNKNOWN_RESOURCE", f"{r.id}: unknown resource {res}",
-                    task_ids=[r.id], resource_ids=[res])
+                err(
+                    "E_UNKNOWN_RESOURCE",
+                    f"{r.id}: unknown resource {res}",
+                    task_ids=[r.id],
+                    resource_ids=[res],
+                )
                 continue
             for day in range(r.start, r.finish):
                 usage[res][day] += 1
@@ -197,9 +232,11 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
             cap = cap_on(res, day)
             if demand > cap:
                 what = "unavailable" if cap == 0 else "over capacity"
-                err("E_OVERLOAD",
+                err(
+                    "E_OVERLOAD",
                     f"resource {res} {what} on day {day} ({demand} > {cap})",
-                    resource_ids=[res])
+                    resource_ids=[res],
+                )
                 break  # one report per resource is enough
 
     # 5. project buffer
@@ -211,53 +248,72 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
         if cc_tasks:
             last_cc = max(r.finish for r in cc_tasks)
             if pbs[0].start != last_cc:
-                err("E_PB_PLACEMENT",
-                    f"project buffer starts {pbs[0].start}, last critical task "
-                    f"finishes {last_cc}", task_ids=[pbs[0].id])
+                err(
+                    "E_PB_PLACEMENT",
+                    f"project buffer starts {pbs[0].start}, last critical task finishes {last_cc}",
+                    task_ids=[pbs[0].id],
+                )
         pb_links = _parse_links(pbs[0].predecessor_ids)
-        if len(pb_links) != 1 or pb_links[0][1] != "PB" or (
+        if (
+            len(pb_links) != 1
+            or pb_links[0][1] != "PB"
+            or (
                 pb_links[0][0] in rows
-                and not (rows[pb_links[0][0]].type == "task"
-                         and rows[pb_links[0][0]].chain == "critical")):
-            err("E_PB_PRED",
+                and not (rows[pb_links[0][0]].type == "task" and rows[pb_links[0][0]].chain == "critical")
+            )
+        ):
+            err(
+                "E_PB_PRED",
                 f"{pbs[0].id}: project buffer must have exactly one "
                 f"predecessor — the terminal critical-chain task via :PB "
-                f"(got {pbs[0].predecessor_ids or 'none'})", task_ids=[pbs[0].id])
+                f"(got {pbs[0].predecessor_ids or 'none'})",
+                task_ids=[pbs[0].id],
+            )
 
     # 8. buffers consume no resources
     for r in sched:
         if r.type in BUFFER_LINK and r.resource_ids.strip():
-            err("E_BUFFER_RESOURCES", f"{r.id}: buffer must not consume resources",
-                task_ids=[r.id])
+            err(
+                "E_BUFFER_RESOURCES",
+                f"{r.id}: buffer must not consume resources",
+                task_ids=[r.id],
+            )
 
     # 10. buffers have positive length
     for r in sched:
         if r.type in BUFFER_LINK and r.duration < 1:
-            err("E_ZERO_BUFFER",
+            err(
+                "E_ZERO_BUFFER",
                 f"{r.id}: zero-length buffer (duration {r.duration}) "
                 f"protects nothing — omit it and flag the chain instead",
-                task_ids=[r.id])
+                task_ids=[r.id],
+            )
 
     # 11. every feeding buffer merges into exactly one protected successor
     fb_ids = {r.id for r in sched if r.type == "feeding_buffer"}
     merged = defaultdict(list)
     for tid, r in rows.items():
-        for pid, ltype, lag in _parse_links(r.predecessor_ids):
+        for pid, ltype, _lag in _parse_links(r.predecessor_ids):
             if pid in fb_ids and ltype == "FB":
                 merged[pid].append(tid)
     for fb in sorted(fb_ids):
         succs = merged.get(fb, [])
         if len(succs) != 1:
-            err("E_FB_MERGE",
+            err(
+                "E_FB_MERGE",
                 f"{fb}: feeding buffer must merge into exactly one successor "
                 f"via a :FB link (found {len(succs)}) — a buffer without a "
-                f"successor dangles outside the network", task_ids=[fb])
+                f"successor dangles outside the network",
+                task_ids=[fb],
+            )
             continue
         s = rows[succs[0]]
         if not (s.type == "task" and s.chain == "critical"):
-            err("E_FB_MERGE",
+            err(
+                "E_FB_MERGE",
                 f"{fb}: merge successor {succs[0]} must be a critical-chain task",
-                task_ids=[fb, succs[0]])
+                task_ids=[fb, succs[0]],
+            )
 
     # 12. no bypasses, no unbuffered merges into the critical chain
     fb_attach_of = {}  # attach task id -> (fb id, fb finish)
@@ -270,21 +326,25 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
     for tid, r in rows.items():
         if r.type != "task" or r.chain != "critical":
             continue
-        for pid, ltype, lag in _parse_links(r.predecessor_ids):
+        for pid, _ltype, _lag in _parse_links(r.predecessor_ids):
             p = rows.get(pid)
             if not p or p.type != "task" or p.chain == "critical":
                 continue
             # a non-critical task feeds this critical task directly
             if pid in fb_attach_of and fb_attach_of[pid][1] == r.start:
-                err("E_BYPASS",
+                err(
+                    "E_BYPASS",
                     f"{tid}: direct link from {pid} BYPASSES feeding buffer "
                     f"{fb_attach_of[pid][0]} — reroute the edge through the buffer",
-                    task_ids=[tid, pid])
+                    task_ids=[tid, pid],
+                )
             elif r.start - p.finish >= 1:
-                err("E_UNBUFFERED_MERGE",
+                err(
+                    "E_UNBUFFERED_MERGE",
                     f"{tid}: unbuffered merge — non-critical {pid} feeds the "
                     f"critical chain directly with room for a feeding buffer",
-                    task_ids=[tid, pid])
+                    task_ids=[tid, pid],
+                )
 
     # 6. feeding buffer positioning: starts at its attach task's finish,
     # ends exactly on a critical-chain task's start
@@ -293,19 +353,23 @@ def check_schedule(schedule: Schedule, network: Network) -> ValidationReport:
         own = _parse_links(fb.predecessor_ids)
         fb_attach = [pid for pid, lt, _ in own if lt == "FB"]
         if len(own) != 1 or len(fb_attach) != 1:
-            err("E_FB_ATTACH",
-                f"{fb.id}: feeding buffer must attach to exactly one "
-                f"task via :FB (got {fb.predecessor_ids or 'none'})",
-                task_ids=[fb.id])
+            err(
+                "E_FB_ATTACH",
+                f"{fb.id}: feeding buffer must attach to exactly one task via :FB (got {fb.predecessor_ids or 'none'})",
+                task_ids=[fb.id],
+            )
         elif fb_attach[0] in rows and rows[fb_attach[0]].finish != fb.start:
-            err("E_FB_ATTACH",
-                f"{fb.id}: starts {fb.start} but its attach task "
-                f"{fb_attach[0]} finishes {rows[fb_attach[0]].finish}",
-                task_ids=[fb.id, fb_attach[0]])
+            err(
+                "E_FB_ATTACH",
+                f"{fb.id}: starts {fb.start} but its attach task {fb_attach[0]} finishes {rows[fb_attach[0]].finish}",
+                task_ids=[fb.id, fb_attach[0]],
+            )
         if fb.finish not in cc_starts:
-            err("E_FB_ANCHOR",
-                f"{fb.id}: end {fb.finish} not anchored to a critical-chain "
-                f"task start (its protected successor)", task_ids=[fb.id])
+            err(
+                "E_FB_ANCHOR",
+                f"{fb.id}: end {fb.finish} not anchored to a critical-chain task start (its protected successor)",
+                task_ids=[fb.id],
+            )
 
     return rep
 

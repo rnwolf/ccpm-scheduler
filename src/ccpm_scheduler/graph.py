@@ -21,6 +21,7 @@ Library API:  render_network_html(schedule, title=..., tasks=...) -> str
 CLI:          ccpm-scheduler graph schedule.csv project-network.html
                   [--tasks tasks.csv]
 """
+
 from __future__ import annotations
 
 import json
@@ -31,21 +32,28 @@ from .model import Schedule, as_int
 
 _FEEDING_LABEL_RE = re.compile(r"^feeding-(\d+)$")
 
-CRITICAL_COLOR = "#b22222"          # firebrick, as on the Gantt
+CRITICAL_COLOR = "#b22222"  # firebrick, as on the Gantt
 OTHER_COLOR = "#9e9e9e"
-PB_COLOR = "#ffd700"                # gold
-FB_COLOR = "#f0e68c"                # khaki
+PB_COLOR = "#ffd700"  # gold
+FB_COLOR = "#f0e68c"  # khaki
 # matplotlib tab10 hues in the Gantt's feeding-chain order (red family
 # excluded - reserved for the critical chain)
-FEEDING_PALETTE = ["#2ca02c", "#1f77b4", "#9467bd", "#8c564b",
-                   "#e377c2", "#bcbd22", "#17becf", "#ff7f0e"]
+FEEDING_PALETTE = [
+    "#2ca02c",
+    "#1f77b4",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#bcbd22",
+    "#17becf",
+    "#ff7f0e",
+]
 
 
 def _split_resources(s):
     """Split a resource list on ';'/',' only — unlike dependency tokens,
     resource names may legitimately contain spaces ("Resource A")."""
-    return [x.strip() for x in (s or "").replace(",", ";").split(";")
-            if x.strip()]
+    return [x.strip() for x in (s or "").replace(",", ";").split(";") if x.strip()]
 
 
 def _node_style(row, feed_color):
@@ -66,7 +74,7 @@ def _estimates(tasks):
     """task id -> realistic duration (whole days), for tasks that have one."""
     if tasks is None:
         return {}
-    if hasattr(tasks, "tasks"):     # a Network is fine too
+    if hasattr(tasks, "tasks"):  # a Network is fine too
         tasks = tasks.tasks
     out = {}
     for t in tasks:
@@ -85,15 +93,12 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
     # any chain label other than critical/none gets a palette color — CCPM
     # schedules emit feeding-<n>, but embedding tools (e.g. our-planner) may
     # carry their own chain names
-    feeding_chains = sorted({r.chain for r in rows
-                             if r.chain not in ("critical", "none")})
-    feed_color = {c: FEEDING_PALETTE[i % len(FEEDING_PALETTE)]
-                  for i, c in enumerate(feeding_chains)}
+    feeding_chains = sorted({r.chain for r in rows if r.chain not in ("critical", "none")})
+    feed_color = {c: FEEDING_PALETTE[i % len(FEEDING_PALETTE)] for i, c in enumerate(feeding_chains)}
 
     ids = {r.id for r in rows}
     nodes, edges = [], []
-    all_resources = sorted({res for r in rows
-                            for res in _split_resources(r.resource_ids)})
+    all_resources = sorted({res for r in rows for res in _split_resources(r.resource_ids)})
 
     for r in rows:
         background, border, dashed_border, shape = _node_style(r, feed_color)
@@ -102,37 +107,40 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
         if r.type == "task":
             # schedule.csv carries the estimate since v0.7; --tasks remains
             # the fallback for schedules produced before that
-            r_realistic = (r.realistic_duration
-                           if r.realistic_duration is not None
-                           else realistic.get(r.id))
+            r_realistic = r.realistic_duration if r.realistic_duration is not None else realistic.get(r.id)
         title = f"{r.name}: day {r.start} – {r.finish} ({r.duration}d)"
         if r_realistic is not None:
-            title = (f"{r.name}: day {r.start} – {r.finish} "
-                     f"({r.duration}d optimal, {r_realistic}d realistic)")
-        nodes.append({
-            "id": r.id,
-            "label": f"{r.id}\n{r.name}" if r.name and r.name != r.id else r.id,
-            "shape": shape,
-            "color": {"background": background, "border": border,
-                      "highlight": {"background": background,
-                                    "border": "#000000"}},
-            "font": {"color": "#ffffff" if dark else "#1a1a1a"},
-            "shapeProperties": {"borderDashes": [4, 3] if dashed_border
-                                else False},
-            "borderWidth": 2 if r.type != "task" else 1,
-            "title": title,
-            # inspector payload (vis passes unknown fields through)
-            "data": {
-                "name": r.name, "type": r.type, "chain": r.chain,
-                "start": r.start, "finish": r.finish,
-                "duration": r.duration,
-                "realistic": r_realistic,
-                "resources": ", ".join(_split_resources(r.resource_ids)),
-                "resource_list": _split_resources(r.resource_ids),
-                "predecessors": r.predecessor_ids.replace(";", "; "),
-                "url": r.url,
-            },
-        })
+            title = f"{r.name}: day {r.start} – {r.finish} ({r.duration}d optimal, {r_realistic}d realistic)"
+        nodes.append(
+            {
+                "id": r.id,
+                "label": f"{r.id}\n{r.name}" if r.name and r.name != r.id else r.id,
+                "shape": shape,
+                "color": {
+                    "background": background,
+                    "border": border,
+                    "highlight": {"background": background, "border": "#000000"},
+                },
+                "font": {"color": "#ffffff" if dark else "#1a1a1a"},
+                "shapeProperties": {"borderDashes": [4, 3] if dashed_border else False},
+                "borderWidth": 2 if r.type != "task" else 1,
+                "title": title,
+                # inspector payload (vis passes unknown fields through)
+                "data": {
+                    "name": r.name,
+                    "type": r.type,
+                    "chain": r.chain,
+                    "start": r.start,
+                    "finish": r.finish,
+                    "duration": r.duration,
+                    "realistic": r_realistic,
+                    "resources": ", ".join(_split_resources(r.resource_ids)),
+                    "resource_list": _split_resources(r.resource_ids),
+                    "predecessors": r.predecessor_ids.replace(";", "; "),
+                    "url": r.url,
+                },
+            }
+        )
         for link in io.parse_links(r.predecessor_ids, buffer_links=True):
             if link.pred_id not in ids:
                 continue
@@ -140,22 +148,25 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
             label = "" if link.type in ("FS", "PB", "FB") else link.type
             if link.lag:
                 label += f"{link.lag:+d}"
-            edges.append({
-                "id": f"e{len(edges)}",
-                "from": link.pred_id, "to": r.id, "arrows": "to",
-                "dashes": [6, 4] if buffer_link else False,
-                "color": {"color": "#666666" if buffer_link else "#404040"},
-                "width": 1.5,
-                **({"label": label} if label else {}),
-            })
+            edges.append(
+                {
+                    "id": f"e{len(edges)}",
+                    "from": link.pred_id,
+                    "to": r.id,
+                    "arrows": "to",
+                    "dashes": [6, 4] if buffer_link else False,
+                    "color": {"color": "#666666" if buffer_link else "#404040"},
+                    "width": 1.5,
+                    **({"label": label} if label else {}),
+                }
+            )
 
     legend = []
     if any(r.chain == "critical" and r.type == "task" for r in rows):
         legend.append({"color": CRITICAL_COLOR, "label": critical_label})
     for c in feeding_chains:
         m = _FEEDING_LABEL_RE.match(c)
-        legend.append({"color": feed_color[c],
-                       "label": f"Feeding chain {m.group(1)}" if m else c})
+        legend.append({"color": feed_color[c], "label": f"Feeding chain {m.group(1)}" if m else c})
     if any(r.type == "task" and r.chain == "none" for r in rows):
         legend.append({"color": OTHER_COLOR, "label": "Other task"})
     if any(r.type == "project_buffer" for r in rows):
@@ -167,14 +178,17 @@ def _graph_data(schedule: Schedule, critical_label, tasks=None):
     cc = [r for r in rows if r.chain == "critical" and r.type == "task"]
     summary = ""
     if cc:
-        summary = (f"Critical chain: {len(cc)} tasks, "
-                   f"{sum(r.duration for r in cc)} working days")
+        summary = f"Critical chain: {len(cc)} tasks, {sum(r.duration for r in cc)} working days"
     if pb:
-        summary += (f"{' — ' if summary else ''}project buffer "
-                    f"{pb.duration}d — promised completion: day {pb.finish}")
+        summary += f"{' — ' if summary else ''}project buffer {pb.duration}d — promised completion: day {pb.finish}"
 
-    return {"nodes": nodes, "edges": edges, "legend": legend,
-            "summary": summary, "resources": all_resources}
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "legend": legend,
+        "summary": summary,
+        "resources": all_resources,
+    }
 
 
 _TEMPLATE = """<!DOCTYPE html>
@@ -397,8 +411,12 @@ _TEMPLATE = """<!DOCTYPE html>
 """
 
 
-def render_network_html(schedule: Schedule, title="CCPM Schedule",
-                        critical_label="Critical chain", tasks=None) -> str:
+def render_network_html(
+    schedule: Schedule,
+    title="CCPM Schedule",
+    critical_label="Critical chain",
+    tasks=None,
+) -> str:
     """The complete standalone HTML document as a string.
 
     `tasks` (a list of Task or a Network) enriches task nodes with their
@@ -406,13 +424,16 @@ def render_network_html(schedule: Schedule, title="CCPM Schedule",
     data = _graph_data(schedule, critical_label, tasks)
     # </ would end the inline <script> early if a name/url contained it
     payload = json.dumps(data, indent=2).replace("</", "<\\/")
-    safe_title = (title.replace("&", "&amp;").replace("<", "&lt;")
-                  .replace(">", "&gt;"))
-    return (_TEMPLATE.replace("__TITLE__", safe_title)
-            .replace("__DATA__", payload))
+    safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return _TEMPLATE.replace("__TITLE__", safe_title).replace("__DATA__", payload)
 
 
-def write_network_html(schedule: Schedule, path, title="CCPM Schedule",
-                       critical_label="Critical chain", tasks=None):
+def write_network_html(
+    schedule: Schedule,
+    path,
+    title="CCPM Schedule",
+    critical_label="Critical chain",
+    tasks=None,
+):
     with open(path, "w", encoding="utf-8") as f:
         f.write(render_network_html(schedule, title, critical_label, tasks))

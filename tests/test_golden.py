@@ -15,14 +15,21 @@ import pytest
 DATA = Path(__file__).parent / "data"
 GOLDEN = Path(__file__).parent / "golden"
 
-PROJECTS = ["example", "website-launch", "equipment-retrofit",
-            "lab-trials", "kitchen-renovation"]
+PROJECTS = [
+    "example",
+    "website-launch",
+    "equipment-retrofit",
+    "lab-trials",
+    "kitchen-renovation",
+]
 
 
 def run_module(module, *args):
     return subprocess.run(
         [sys.executable, "-m", f"ccpm_scheduler.{module}", *map(str, args)],
-        capture_output=True, text=True)
+        capture_output=True,
+        text=True,
+    )
 
 
 def build_args(project, out_dir):
@@ -69,8 +76,7 @@ def test_build_method_matches_golden(method, tmp_path):
     """Non-default buffer methods, pinned on the example project. The
     default (cap) is covered by the main goldens; the hchain schedule.csv
     is byte-identical to the pre-Phase-6 golden (the old hard-coded rule)."""
-    r = run_module("build", *build_args("example", tmp_path),
-                   "--buffer-method", method)
+    r = run_module("build", *build_args("example", tmp_path), "--buffer-method", method)
     assert r.returncode == 0, r.stdout + r.stderr
     for name in ("schedule.csv", "summary.md"):
         got = (tmp_path / name).read_bytes()
@@ -82,28 +88,36 @@ def test_legacy_duration_aliases(tmp_path):
     """duration_safe/duration_aggressive headers must yield identical output."""
     d = DATA / "example"
     legacy = tmp_path / "tasks.csv"
-    legacy.write_text((d / "tasks.csv").read_text()
-                      .replace("realistic_duration", "duration_safe", 1))
+    legacy.write_text((d / "tasks.csv").read_text().replace("realistic_duration", "duration_safe", 1))
     out = tmp_path / "out"
-    r = run_module("build", legacy, d / "resources.csv",
-                   "--calendar", d / "calendar.csv",
-                   "--out-dir", out, "--title", "example")
+    r = run_module(
+        "build",
+        legacy,
+        d / "resources.csv",
+        "--calendar",
+        d / "calendar.csv",
+        "--out-dir",
+        out,
+        "--title",
+        "example",
+    )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (out / "schedule.csv").read_bytes() == \
-        (GOLDEN / "example" / "schedule.csv").read_bytes()
+    assert (out / "schedule.csv").read_bytes() == (GOLDEN / "example" / "schedule.csv").read_bytes()
 
 
 def test_validate_rejects_bad_network(tmp_path):
     (tmp_path / "tasks.csv").write_text(
         "id,name,realistic_duration,predecessor_ids,resource_ids\n"
-        "A,Task A,4,B,r1\n"          # cycle A<->B
+        "A,Task A,4,B,r1\n"  # cycle A<->B
         "B,Task B,4,A,r1\n"
-        "C,No resource,4,,\n")       # missing resource
+        "C,No resource,4,,\n"
+    )  # missing resource
     (tmp_path / "resources.csv").write_text("id,name,capacity\nr1,R1,1\n")
     r = run_module("validate", tmp_path / "tasks.csv", tmp_path / "resources.csv")
     assert r.returncode != 0
     out = (r.stdout + r.stderr).lower()
-    assert "circular" in out and "no resources" in out
+    assert "circular" in out
+    assert "no resources" in out
 
 
 @pytest.mark.parametrize("project", ["example"])
@@ -111,8 +125,15 @@ def test_plot_produces_png(project, tmp_path):
     run_module("build", *build_args(project, tmp_path))
     d = DATA / project
     png = tmp_path / "gantt.png"
-    r = run_module("plot", tmp_path / "schedule.csv", png,
-                   "--resources", d / "resources.csv",
-                   "--calendar", d / "calendar.csv")
+    r = run_module(
+        "plot",
+        tmp_path / "schedule.csv",
+        png,
+        "--resources",
+        d / "resources.csv",
+        "--calendar",
+        d / "calendar.csv",
+    )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert png.stat().st_size > 0 and png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert png.stat().st_size > 0
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
