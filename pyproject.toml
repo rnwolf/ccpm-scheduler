@@ -75,3 +75,7 @@ parametrize-names-type = "csv"
 
 [tool.pytest.ini_options]
 addopts = "--cov=ccpm_scheduler --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["src/ccpm_scheduler"]
+patch = ["subprocess"]

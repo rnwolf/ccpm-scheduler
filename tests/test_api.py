@@ -397,3 +397,112 @@ def test_plot_schedule_api(tmp_path):
     png = tmp_path / "gantt.png"
     plot_schedule(result.schedule, png, resources=net.resources, calendar=net.calendar)
     assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_calendar_validation_error_codes():
+    from ccpm_scheduler import CalendarWindow, Network, Resource, Task
+
+    res = [Resource(id="r1", name="R1", capacity=1)]
+    tasks = [Task(id="T1", name="Task 1", realistic_duration=2, resource_ids=["r1"])]
+
+    # 1. E_CAL_BAD_ROW
+    net1 = Network(
+        tasks=tasks, resources=res, calendar=[CalendarWindow(resource_id="r1", start=1.5, end=5, capacity=1)]
+    )
+    rep1 = validate_network(net1)
+    assert any(i.code == "E_CAL_BAD_ROW" for i in rep1.issues)
+
+    # 2. E_CAL_UNKNOWN_RESOURCE
+    net2 = Network(tasks=tasks, resources=res, calendar=[CalendarWindow(resource_id="r99", start=1, end=5, capacity=1)])
+    rep2 = validate_network(net2)
+    assert any(i.code == "E_CAL_UNKNOWN_RESOURCE" for i in rep2.issues)
+
+    # 3. E_CAL_EMPTY_RANGE
+    net3 = Network(tasks=tasks, resources=res, calendar=[CalendarWindow(resource_id="r1", start=5, end=2, capacity=1)])
+    rep3 = validate_network(net3)
+    assert any(i.code == "E_CAL_EMPTY_RANGE" for i in rep3.issues)
+
+    # 4. E_CAL_NEG_CAPACITY
+    net4 = Network(tasks=tasks, resources=res, calendar=[CalendarWindow(resource_id="r1", start=1, end=5, capacity=-1)])
+    rep4 = validate_network(net4)
+    assert any(i.code == "E_CAL_NEG_CAPACITY" for i in rep4.issues)
+
+    # 5. E_CAL_OVERLAP
+    net5 = Network(
+        tasks=tasks,
+        resources=res,
+        calendar=[
+            CalendarWindow(resource_id="r1", start=1, end=5, capacity=1),
+            CalendarWindow(resource_id="r1", start=4, end=8, capacity=1),
+        ],
+    )
+    rep5 = validate_network(net5)
+    assert any(i.code == "E_CAL_OVERLAP" for i in rep5.issues)
+
+
+def test_schedule_check_error_codes():
+    from ccpm_scheduler import Schedule, ScheduleRow, check_schedule
+
+    net = load("example")
+    base_result = build_schedule(net)
+    valid_rows = base_result.schedule.rows
+
+    # 1. E_FB_MERGE: FB dangling or merging into non-critical task
+    bad_rows_fb = []
+    for r in valid_rows:
+        if r.id == "FB1":
+            # Modify to merge into non-critical or missing task
+            bad_rows_fb.append(
+                ScheduleRow(
+                    id=r.id,
+                    name=r.name,
+                    type=r.type,
+                    chain=r.chain,
+                    start=r.start,
+                    finish=r.finish,
+                    duration=r.duration,
+                    predecessor_ids="A:FB",
+                    resource_ids="",
+                )
+            )
+        else:
+            bad_rows_fb.append(r)
+
+    # Add a row that references FB1 illegally
+    bad_rows_fb.append(
+        ScheduleRow(
+            id="NON_CRIT",
+            name="Non Critical",
+            type="task",
+            chain="feeding-1",
+            start=10,
+            finish=15,
+            duration=5,
+            predecessor_ids="FB1:FB",
+            resource_ids="r1",
+        )
+    )
+    rep_fb = check_schedule(Schedule(rows=bad_rows_fb), net)
+    assert any(i.code == "E_FB_MERGE" for i in rep_fb.issues)
+
+    # 2. E_FB_ATTACH: Feeding buffer attached to wrong start date
+    bad_rows_attach = []
+    for r in valid_rows:
+        if r.type == "feeding_buffer":
+            bad_rows_attach.append(
+                ScheduleRow(
+                    id=r.id,
+                    name=r.name,
+                    type=r.type,
+                    chain=r.chain,
+                    start=r.start + 99,
+                    finish=r.finish + 99,
+                    duration=r.duration,
+                    predecessor_ids=r.predecessor_ids,
+                    resource_ids="",
+                )
+            )
+        else:
+            bad_rows_attach.append(r)
+    rep_attach = check_schedule(Schedule(rows=bad_rows_attach), net)
+    assert any(i.code == "E_FB_ATTACH" for i in rep_attach.issues)
