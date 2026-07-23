@@ -134,11 +134,13 @@ design; complete tasks are excluded, buffers never exported, and fractional
 allocations surface this package's E_FRACTIONAL_ALLOCATION error. 11 tests in
 our-planner mirror the worked example (CC 30d, PB 15, promise day 45).
 
-## Phase 5 — Close the model gaps (follow-up)
+## Phase 5 — Fractional resource assignments (Future / Open)
 
-Fractional capacity/allocation support in the leveler: float demand, revisited
-tie-break rules, determinism re-verified with new golden tests. Own change,
-not smuggled into packaging.
+Fractional capacity/allocation support in the leveler (float demand, float capacity,
+revisited tie-break rules, and determinism re-verified with golden tests).
+All initial planned packaging and feature phases (Phases 1 through 6) are complete.
+Fractional resource support is identified as the primary area for future improvement,
+to be prioritized and designed based on real-world usage and community feedback.
 
 ## Phase 6 — Selectable buffer-sizing methods (agreed 2026-07-16) — done
 
